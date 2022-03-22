@@ -10,5 +10,17 @@
 
 readme
 
+Things to do:
+- edit functions in dynamis.jl to match the dynamics laid out in main_script.ipynb (Corinne)
+- find reasonable values for quadrotor parameters (both)
+- make a quadrotor struct to store the above params? (both?)
+- implement toggle-able wind disturbance in dynamics (Corinne)
+    - [brown noise](https://www.youtube.com/watch?v=agivusZEpB0)
+    - [no really](https://www.youtube.com/watch?v=mQFL-NLh0O8)
+    - [okay but actually this sounds really nice](https://www.youtube.com/watch?v=hXetO_bYcMo)
+- some sort of test to show dynamics model works - maybe simple LQR controller? (both)
+- write out constraints for MPC (Jonathan)
+- re-write MPC functions to work for this system (Jonathan)
+
 Some notes:
-- to add a package, you only need to change Project.toml
+- to add a package, you need to add it to Project.toml (and probably delete Manifest.toml and rebuild)
