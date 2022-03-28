@@ -21,7 +21,7 @@ function set_mesh!(vis, model::L;
     end
 end
 
-function visualize!(vis, model::PlanarQuadrotor, x::StaticVector)
+function visualize!(vis, model::Quadrotor, x::StaticVector)
     py,pz = x[1], x[2]
     θ = x[3]
     settransform!(vis["robot"], compose(Translation(0,py,pz), LinearMap(RotX(-θ))))
@@ -69,12 +69,12 @@ function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::AbstractModel,
 end
 
 struct WindyQuad <: AbstractModel
-    quad::PlanarQuadrotor
+    quad::Quadrotor
     dir::MVector{2,Float64}   # wind direction
     wd::Float64               # std on wind angle
     wm::Float64               # std on wind magnitude
 end
-function WindyQuad(quad::PlanarQuadrotor;
+function WindyQuad(quad::Quadrotor;
         wind = [1,1]*1.0,
         wd = deg2rad(10),
         wm = 0.01,
@@ -93,7 +93,7 @@ function RobotDynamics.dynamics(model::WindyQuad, x, u)
     return ẋ2
 end
 
-function simulate(quad::PlanarQuadrotor, x0, ctrl; tf=1.5, dt=0.025, kwargs...)
+function simulate(quad::Quadrotor, x0, ctrl; tf=1.5, dt=0.025, kwargs...)
     model = WindyQuad(quad; kwargs...)
 
     n,m = size(model)

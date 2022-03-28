@@ -1,22 +1,51 @@
 # Taken from homework3-Q1
 
 """
-Calculate the continuous time dynamics ẋ = f(x,u), x is a vector of length 6, u is a vector of length 2.
+Quadrotor Dynamics Parameters
+"""
+mass = 1.0 # [kg]
+g = 9.81   # gravitational acceleration [m/s^2]
+ℓ = 0.3 # quadrotor arm length [m]
+J = diagm([0.2, 0.2, 0.05]) * mass * ℓ^2 # quadrotor moments of inertia about (x,y,z)
 
+k_T = 1.0 #0.1 # [N/rpm]
+k_m = 1.0 #0.1 # [N*m/rpm]
+τ_mat = [[0 ℓ*k_T 0 -ℓ*k_T]
+         [0 -ℓ*k_T 0 ℓ*k_T]
+         [k_m -k_m k_m -k_m]]
+
+"""
+Calculate the continuous time dynamics ẋ = f(x,u), x is a vector of length 6, u is a vector of length 2.
+param - x <13 elem vector>: [pos (world frame),
+                             orientation (quaternion, body -> world),
+                             velocity (body frame),
+                             angular velocity (body frame)]
+param - u <4 elem vector>: rpm of each motor (see main_script.ipynb for ordering)
 returns ẋ
 """
-
 function dynamics(x,u,wind_disturbance=false)
-    # planar quadrotor dynamics
-    
-    # parameters
-    mass = 1.0 
-    g = 9.81
-    ℓ = 0.3 
-    J = 0.2*mass*ℓ^2
+    # 3D quadrotor dynamics
 
      # unpack state
-    px,pz,θ,vx,vz,ω = x
+#     px,pz,θ,vx,vz,ω = x
+    r = x[1:3]
+    q = x[4:7]
+    v_B = x[8:10]
+    ω_B = x[11:13]
+    
+    Q = quat_H' * (quat_R(q)' * quat_L(q)) * quat_H # first row and first col are garbage
+    
+    F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'
+    
+    τ_B = τ_mat * u
+    
+    # see main.ipynb for formal dynamics definition
+    ẋ = vcat(Q*v_B, 
+             0.5*quat_L(q)*quat_H*ω_B,
+             1/mass * F_B - cross(ω_B, v_B),
+             inv(J)*(τ_B - cross(ω_B, J*ω_B))
+             )
+    
     
     # TODO: implement wind disturbance
     if wind_disturbance
@@ -24,7 +53,7 @@ function dynamics(x,u,wind_disturbance=false)
         error("unimplemented")
         return zeros(6)
     else
-        return [vx,vz,ω,(1/mass)*(u[1] + u[2])*sin(θ), (1/mass)*(u[1] + u[2])*cos(θ) - g, (ℓ/(2*J))*(u[2]-u[1])]
+        return ẋ
     end
 end
 
