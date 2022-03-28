@@ -11,6 +11,7 @@
 readme
 
 Things to do:
+- update dynamics quadrotor from planar -> 3D
 - implement toggle-able wind disturbance in dynamics (Corinne)\
     - [brown note](https://www.youtube.com/watch?v=mQFL-NLh0O8)
     - [okay but actually this sounds really nice](https://www.youtube.com/watch?v=hXetO_bYcMo)
