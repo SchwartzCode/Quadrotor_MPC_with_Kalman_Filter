@@ -22,9 +22,10 @@ function set_mesh!(vis, model::L;
 end
 
 function visualize!(vis, model::Quadrotor, x::StaticVector)
-    py,pz = x[1], x[2]
-    θ = x[3]
-    settransform!(vis["robot"], compose(Translation(0,py,pz), LinearMap(RotX(-θ))))
+    px,py,pz = x[1], x[2], x[3]
+    rot_mat = rot_mat_from_quat(x[4:7])
+    
+    settransform!(vis["robot"], compose(Translation(px,py,pz), LinearMap(rot_mat)))
 end
 
 function visualize!(vis, model, tf::Real, X)
@@ -40,26 +41,62 @@ function visualize!(vis, model, tf::Real, X)
     setanimation!(vis, anim)
 end
 
-function line_reference()
-    x1ref = Array(LinRange(-2,2,101))
-    x2ref = Array(ones(101))
-    θref = Array(zeros(101))
-    v1ref = Array((4.0/3.0)*ones(101))
-    v2ref = Array(zeros(101))
-    ωref = Array(zeros(101))
-    xref = [x1ref'; x2ref'; θref'; v1ref'; v2ref'; ωref'] 
-    return [SVector{6}(x) for x in eachcol(xref)]
+# TODO: re-work this func to be 3D (not planar)
+"""
+params
+N  - number of time steps
+"""
+function line_reference(N::Int64, dt::Float64)
+    x_ref = Array(zeros(N))
+    y_ref = Array(LinRange(-3,3,N))
+    z_ref = Array(ones(N))
+    quat_ref = hcat(ones(N), zeros(N), zeros(N), ones(N))
+
+    vx_ref = Array(zeros(N))
+    vy_ref = Array((6.0/(N*dt))*ones(N))
+    vz_ref = Array(zeros(N))
+    ωx_ref = Array(zeros(N))
+    ωy_ref = Array(zeros(N))
+    ωz_ref = Array(zeros(N))
+    
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vx_ref'; vy_ref'; vz_ref'; ωx_ref'; ωy_ref'; ωz_ref'] 
+    return [SVector{13}(x) for x in eachcol(xref)]
 end
 
-function flip_reference()
-    x1ref = [LinRange(-3,0,20); zeros(20); LinRange(0,3,21)]
-    x2ref = [ones(20); LinRange(1,3,10); LinRange(3,1,10); ones(21)]
-    θref = [zeros(20); LinRange(0,-2*pi,20); -2*pi*ones(21)]
-    v1ref = [6.0*ones(20); zeros(20); 6.0*ones(21)]
-    v2ref = [zeros(20); 8.0*ones(10); -8.0*ones(10); zeros(21)]
-    ωref = [zeros(20); -4*pi*ones(20); zeros(21)]
-    xref = [x1ref'; x2ref'; θref'; v1ref'; v2ref'; ωref']
-    return [SVector{6}(x) for x in eachcol(xref)]
+"""
+params
+N  - number of time steps
+dt - size of time steps
+"""
+# TODO: flip looks wonky
+function flip_reference(N::Int64, dt::Float64)
+    N_pre_flip = Int(floor(N / 4))
+    N_flip = Int(floor(N / 2))
+    N_post_flip = Int(ceil(N / 4))
+    N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
+    half_N_flip = Int(N_flip/2)
+    
+    x_ref = Array(zeros(N))
+    y_ref = [LinRange(-3,0,N_pre_flip); zeros(N_flip); LinRange(0,3,N_post_flip)]
+    z_ref = [ones(N_pre_flip); LinRange(1,3,half_N_flip); LinRange(3,1,half_N_flip); ones(N_post_flip)]
+    
+    # TODO: populate this properly
+    quat_ref = hcat(ones(N), zeros(N), zeros(N), ones(N))
+    println(N_flip)
+    flip_angles = collect(LinRange(0.0, -2*pi, N_flip))
+    
+    quat_ref[N_pre_flip+1:N_pre_flip+N_flip,1] = cos.(flip_angles/2)
+    quat_ref[N_pre_flip+1:N_pre_flip+N_flip,3] = sin.(flip_angles/2)
+    
+    vx_ref = Array(zeros(N))
+    vy_ref = [3.0/(N_pre_flip/dt)*ones(N_pre_flip); zeros(N_flip); 3.0*ones(N_post_flip)]
+    vz_ref = [zeros(N_pre_flip); 2.0/(half_N_flip/dt)*ones(half_N_flip); -2.0/half_N_flip/dt*ones(half_N_flip); zeros(N_post_flip)]
+    ωy_ref = [zeros(N_pre_flip); -2*pi/(N_flip/dt)*ones(N_flip); zeros(N_post_flip)]
+    ωx_ref = Array(zeros(N))
+    ωz_ref = Array(zeros(N))
+    
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vx_ref'; vy_ref'; vz_ref'; ωx_ref'; ωy_ref'; ωz_ref'] 
+    return [SVector{13}(x) for x in eachcol(xref)]
 end
 
 function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::AbstractModel,
@@ -74,6 +111,8 @@ struct WindyQuad <: AbstractModel
     wd::Float64               # std on wind angle
     wm::Float64               # std on wind magnitude
 end
+
+# TODO @Corinne - will need to change this struct to be 3D
 function WindyQuad(quad::Quadrotor;
         wind = [1,1]*1.0,
         wd = deg2rad(10),
@@ -83,6 +122,8 @@ function WindyQuad(quad::Quadrotor;
 end
 RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
 RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
+
+# TODO @Corinne - will need to re-work this function to be 3D (not planar)
 function RobotDynamics.dynamics(model::WindyQuad, x, u)
     ẋ = dynamics(model.quad, x, u)
     mass = model.quad.mass
@@ -113,8 +154,4 @@ function simulate(quad::Quadrotor, x0, ctrl; tf=1.5, dt=0.025, kwargs...)
     rate = N / (tend - tstart) * 1e9
     println("Controller ran at $rate Hz")
     return X,U,times
-end
-
-function run_tests()
-    include(joinpath(@__DIR__,"..","test","q1.jl"))
 end

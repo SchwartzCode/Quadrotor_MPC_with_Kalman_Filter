@@ -11,7 +11,7 @@ J = diagm([0.2, 0.2, 0.05]) * mass * ℓ^2 # quadrotor moments of inertia about 
 k_T = 1.0 #0.1 # [N/rpm]
 k_m = 1.0 #0.1 # [N*m/rpm]
 τ_mat = [[0 ℓ*k_T 0 -ℓ*k_T]
-         [0 -ℓ*k_T 0 ℓ*k_T]
+         [-ℓ*k_T 0 ℓ*k_T 0]
          [k_m -k_m k_m -k_m]]
 
 """
@@ -27,13 +27,12 @@ function dynamics(x,u,wind_disturbance=false)
     # 3D quadrotor dynamics
 
      # unpack state
-#     px,pz,θ,vx,vz,ω = x
     r = x[1:3]
     q = x[4:7]
     v_B = x[8:10]
     ω_B = x[11:13]
     
-    Q = quat_H' * (quat_R(q)' * quat_L(q)) * quat_H # first row and first col are garbage
+    Q = rot_mat_from_quat(q)
     
     F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'
     
@@ -43,18 +42,9 @@ function dynamics(x,u,wind_disturbance=false)
     ẋ = vcat(Q*v_B, 
              0.5*quat_L(q)*quat_H*ω_B,
              1/mass * F_B - cross(ω_B, v_B),
-             inv(J)*(τ_B - cross(ω_B, J*ω_B))
-             )
+             inv(J)*(τ_B - cross(ω_B, J*ω_B)) )
     
-    
-    # TODO: implement wind disturbance
-    if wind_disturbance
-        println("ERROR! wind_disturbance not implemented in dynamics")
-        error("unimplemented")
-        return zeros(6)
-    else
-        return ẋ
-    end
+    return ẋ
 end
 
 """

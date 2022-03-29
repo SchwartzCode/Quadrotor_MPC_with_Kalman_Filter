@@ -16,6 +16,12 @@ function quat_R(q)
     [q[1] -q[2:4]'; q[2:4] q[1]*I - hat(q[2:4])]
 end
 
+function rot_mat_from_quat(q)
+    # quat_H matrices used to trim off first row and column 
+    #   (since R(q)' L(q) is 4x4 and Q is just bottom 3x3)
+    return quat_H' * (quat_R(q)' * quat_L(q)) * quat_H
+end
+
 function get_quat_H()
     H = zeros(4,3)
     H[2:4,:] = I(3)
