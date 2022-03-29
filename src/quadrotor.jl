@@ -68,7 +68,6 @@ params
 N  - number of time steps
 dt - size of time steps
 """
-# TODO: flip looks wonky
 function flip_reference(N::Int64, dt::Float64)
     N_pre_flip = Int(floor(N / 4))
     N_flip = Int(floor(N / 2))
@@ -76,22 +75,26 @@ function flip_reference(N::Int64, dt::Float64)
     N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
     half_N_flip = Int(N_flip/2)
     
+    # TODO: make flip follow a circle where y^2 + z^2 = r^2
     x_ref = Array(zeros(N))
     y_ref = [LinRange(-3,0,N_pre_flip); zeros(N_flip); LinRange(0,3,N_post_flip)]
     z_ref = [ones(N_pre_flip); LinRange(1,3,half_N_flip); LinRange(3,1,half_N_flip); ones(N_post_flip)]
     
-    # TODO: populate this properly
-    quat_ref = hcat(ones(N), zeros(N), zeros(N), ones(N))
-    println(N_flip)
-    flip_angles = collect(LinRange(0.0, -2*pi, N_flip))
+    # init with quaternion of all 0 rad euler angles
+    quat_ref = hcat(ones(N), zeros(N), zeros(N), zeros(N))
     
-    quat_ref[N_pre_flip+1:N_pre_flip+N_flip,1] = cos.(flip_angles/2)
-    quat_ref[N_pre_flip+1:N_pre_flip+N_flip,3] = sin.(flip_angles/2)
+    # do full rotation about y axis
+    angs = collect(LinRange(0, 2*pi, N_flip))
+    flip_angles = [tan.(angs/2) zeros(N_flip) zeros(N_flip)]
+    
+    for i=1:N_flip
+        quat_ref[N_pre_flip+i,:] .= ρ(flip_angles[i,:])
+    end
     
     vx_ref = Array(zeros(N))
     vy_ref = [3.0/(N_pre_flip/dt)*ones(N_pre_flip); zeros(N_flip); 3.0*ones(N_post_flip)]
     vz_ref = [zeros(N_pre_flip); 2.0/(half_N_flip/dt)*ones(half_N_flip); -2.0/half_N_flip/dt*ones(half_N_flip); zeros(N_post_flip)]
-    ωy_ref = [zeros(N_pre_flip); -2*pi/(N_flip/dt)*ones(N_flip); zeros(N_post_flip)]
+    ωy_ref = [zeros(N_pre_flip); 2*pi/(N_flip/dt)*ones(N_flip); zeros(N_post_flip)]
     ωx_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
     
