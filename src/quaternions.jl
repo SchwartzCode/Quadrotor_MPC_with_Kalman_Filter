@@ -43,17 +43,34 @@ function ρ(ϕ)
     return (1/sqrt(1 + dot(ϕ,ϕ)))*[1;ϕ]
 end
 
-"""
-================================================================================================
-Attitude Jacobian funcs below almost certainly need to be modified for our use:
-================================================================================================
-"""
-
-function G(Q)
-    return L(Q)*H
+function ϕ(q)
+    # convert quaternion to rodrigues parameters
+    
+    return q[2:4] / q[1]
 end
 
-function Ḡ(q)
-    Q = q[4:7]
-    return [I zeros(3,3); zeros(4,3) G(Q)]
+"""
+Returns: attitude Jacobian given a quaternion
+Params
+    q: quaternion to calculate Jacobian about
+"""
+function G(q)
+    return quat_L(q)*quat_H
+end
+
+"""
+Returns: full attitude Jacobian matrix (i.e. padded with I to account
+    for other state variables)
+Params
+    x: 13-dim state vector (r, q, v_B, ω_B)
+"""
+function attitude_jacobian(x)
+    Q = x[4:7]
+    
+    # old impl for (r, q) state:
+    # I            zeros(3,3)
+    # zeros(4,3)   G(Q) -> (4,3)
+#     return [I zeros(3,3); zeros(4,3) G(Q)]
+    
+    return [I zeros(3,9); zeros(4,3) G(Q) zeros(4,6); zeros(6,6) I]
 end
