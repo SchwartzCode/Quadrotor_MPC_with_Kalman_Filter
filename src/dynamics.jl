@@ -34,7 +34,15 @@ function dynamics(x,u,wind_disturbance=false)
     
     Q = rot_mat_from_quat(q)
     
+#     println(Q)
+    
+#     println("arg", sum(k_T * u))
     F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'
+    
+#     println("\t", Q' * [0 0 -mass*g]')
+#     println("\t- ", [0 0 sum(k_T * u)]')
+    
+#     println("= force: ", F_B)
     
     τ_B = τ_mat * u
     

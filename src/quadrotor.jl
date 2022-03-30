@@ -47,14 +47,14 @@ params
 N  - number of time steps
 """
 function line_reference(N::Int64, dt::Float64)
-    x_ref = Array(zeros(N))
-    z_ref = Array(LinRange(-1,1,N))
-    y_ref = Array(ones(N))
-    quat_ref = hcat(ones(N), zeros(N), zeros(N), ones(N))
+    x_ref = Array(LinRange(0,2,N))
+    y_ref = Array(LinRange(-1,1,N))
+    z_ref = Array(LinRange(0.5,2.5,N))
+    quat_ref = hcat(ones(N), zeros(N), zeros(N), zeros(N))
 
-    vx_ref = Array(zeros(N))
+    vx_ref = Array((2.0/(N*dt))*ones(N))
+    vy_ref = Array((2.0/(N*dt))*ones(N))
     vz_ref = Array((2.0/(N*dt))*ones(N))
-    vy_ref = Array(zeros(N))
     ωx_ref = Array(zeros(N))
     ωy_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
