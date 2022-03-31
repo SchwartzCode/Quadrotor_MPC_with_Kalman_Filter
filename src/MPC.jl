@@ -133,6 +133,35 @@ function updateQP_unconstrained!(ctrl::MPCController, x, time)
     return nothing
 end
 
+"""
+    get_k(ctrl, t)
+
+Get the time index corresponding to time `t`. 
+Useful for implementing zero-order hold control.
+Uses binary search to find the time index.
+"""
+get_k(controller, t) = searchsortedlast(controller.times, t)
+
+"""
+    get_control(ctrl::MPCController, x, t)
+
+Get the control from the MPC solver by solving the QP. 
+If you want to use your own QP solver, you'll need to change this
+method.
+"""
+function get_control(ctrl::MPCController{OSQP.Model}, x, time)
+    # Update the QP
+    updateQP!(ctrl, x, time)
+    OSQP.update!(ctrl.solver, q=ctrl.q, l=ctrl.lb, u=ctrl.ub)
+
+    # Solve QP
+    results = OSQP.solve!(ctrl.solver)
+    Δu = results.x[1:4]
+    
+    k = get_k(ctrl, time)
+    return ctrl.Uref[k] + Δu 
+end
+
 
 """
     buildQP!(ctrl, A,B,Q,R,Qf; kwargs...)
@@ -155,58 +184,60 @@ function buildQP_constrained!(ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
     P_rows = (N-1)*(R_size[1] + Q_size[1])
     P_cols = (N-1)*(R_size[2] + Q_size[2])
     
-#     # populate first row of A matrix
-#     A_constraint = [B -I(x_size) zeros(x_size, P_cols - u_size - x_size)]
+    # populate first row of A matrix
+    A_constraint = [B -I(x_size) zeros(x_size, P_cols - u_size - x_size)]
     
-#     # set first row of P
-#     P = [R zeros(R_size[1], P_cols - R_size[2])]
-#     curr_pos = u_size
+    # set first row of P
+    P = [R zeros(R_size[1], P_cols - R_size[2])]
+    curr_pos = u_size
     
-#     # Inequality constraint matrices that will end up in A
-#     theta_selector = zeros(x_size)
-#     theta_selector[3] = 1
-#     A_theta_constraint = [zeros(curr_pos)' theta_selector' zeros(P_cols - curr_pos - x_size)']
-#     phi_selector = zeros(x_size)
-#     phi_selector[8] = 1
-#     A_phi_constraint = [zeros(curr_pos)' phi_selector' zeros(P_cols - curr_pos - x_size)']
-#     z_selector = zeros(x_size)
-#     z_selector[2] = 1
-#     A_z_constraint = [zeros(curr_pos)' z_selector' zeros(P_cols - curr_pos - x_size)']
-#     T_selector = zeros(x_size)
-#     T_selector[7] = 1
-#     A_T_constraint = [zeros(curr_pos)' T_selector' zeros(P_cols - curr_pos - x_size)']
+#     Inequality constraint matrices that will end up in A
+    u1_selector = zeros(u_size)
+    u1_selector[1] = 1
+    A_u1_constraint = [u1_selector' zeros(P_cols - curr_pos)']
     
-#     for i=2:N-1
+    u2_selector = zeros(u_size)
+    u2_selector[2] = 1
+    A_u2_constraint = [u2_selector' zeros(P_cols - curr_pos)']
+    
+    u3_selector = zeros(u_size)
+    u3_selector[3] = 1
+    A_u3_constraint = [u3_selector' zeros(P_cols - curr_pos)']
+    
+    u4_selector = zeros(u_size)
+    u4_selector[4] = 1
+    A_u4_constraint = [u4_selector' zeros(P_cols - curr_pos)']
+    
+    for i=2:N-1
             
-#         # Rows of A constraint matrix
-#         new_A_const_row = [zeros(x_size, curr_pos) A B -I(x_size) zeros(x_size, P_cols - curr_pos - 2*x_size - u_size)]
-#         A_constraint = [A_constraint; new_A_const_row]
+        # Rows of A constraint matrix
+        new_A_const_row = [zeros(x_size, curr_pos) A B -I(x_size) zeros(x_size, P_cols - curr_pos - 2*x_size - u_size)]
+        A_constraint = [A_constraint; new_A_const_row]
         
-#         # ==== P rows ====
-#         # Q row
-#         new_P_row = [zeros(Q_size[1], curr_pos) Q zeros(Q_size[1], P_cols - (curr_pos + Q_size[2]))]
-#         curr_pos += x_size
-#         P = [P; new_P_row]
+        # ==== P rows ====
+        # Q row
+        new_P_row = [zeros(Q_size[1], curr_pos) Q zeros(Q_size[1], P_cols - (curr_pos + Q_size[2]))]
+        curr_pos += x_size
+        P = [P; new_P_row]
             
-#         # R row
-#         new_P_row = [zeros(R_size[1], curr_pos) R zeros(R_size[1], P_cols - (curr_pos + R_size[2]))]
-#         curr_pos += u_size
-#         P = [P; new_P_row]
+        # R row
+        new_P_row = [zeros(R_size[1], curr_pos) R zeros(R_size[1], P_cols - (curr_pos + R_size[2]))]
+        curr_pos += u_size
+        P = [P; new_P_row]
         
-#         A_theta_constraint = [A_theta_constraint; zeros(curr_pos)' theta_selector' zeros(P_cols - curr_pos - x_size)']
-#         A_phi_constraint = [A_phi_constraint; zeros(curr_pos)' phi_selector' zeros(P_cols - curr_pos - x_size)']
-#         A_z_constraint = [A_z_constraint; zeros(curr_pos)' z_selector' zeros(P_cols - curr_pos - x_size)']
-#         A_T_constraint = [A_T_constraint; zeros(curr_pos)' T_selector' zeros(P_cols - curr_pos - x_size)']
-#     end
+        A_u1_constraint = [A_u1_constraint; zeros(curr_pos - u_size)' u1_selector' zeros(P_cols - curr_pos)']
+        A_u2_constraint = [A_u2_constraint; zeros(curr_pos - u_size)' u2_selector' zeros(P_cols - curr_pos)']
+        A_u3_constraint = [A_u3_constraint; zeros(curr_pos - u_size)' u3_selector' zeros(P_cols - curr_pos)']
+        A_u4_constraint = [A_u4_constraint; zeros(curr_pos - u_size)' u4_selector' zeros(P_cols - curr_pos)']
+    end
     
-#     final_P_row = [zeros(Q_size[1], P_cols - Q_size[2]) Qf]
-#     P = [P; final_P_row]
+    final_P_row = [zeros(Q_size[1], P_cols - Q_size[2]) Qf]
+    P = [P; final_P_row]
     
-#     ctrl.P .= P
+    ctrl.P .= P
     
-#     A_constraint = [A_constraint; A_theta_constraint; A_phi_constraint; A_z_constraint; A_T_constraint]
-    
-#     ctrl.A .= A_constraint
+    A_constraint = [A_constraint; A_u1_constraint; A_u2_constraint; A_u3_constraint; A_u4_constraint]
+    ctrl.A .= A_constraint
     
     
     # Initialize the included solver
@@ -224,57 +255,55 @@ This should update `ctrl.q`, `ctrl.lb`, and `ctrl.ub`.
 """
 function updateQP_constrained!(ctrl::MPCController, x, time)
     
-    # TODO: change this method to fit quadrotor
+    k = get_k(ctrl, time)
+    x_size = size(ctrl.Xref[1])[1]
+    u_size = size(ctrl.Uref[1])[1]
     
-#     k = get_k(ctrl, time)
-#     u_size = 2
-#     x_size = 8
+    # TODO: define these not in place
+    xeq = zeros(x_size)
+    xeq[4] = 1.0 # enforce unit-norm constraint on quat
+    ueq = fill(mass * g / u_size, u_size)
     
-#     R = ctrl.P[begin:u_size, begin:u_size]
-#     Q = ctrl.P[u_size+1:u_size+x_size, u_size+1:u_size+x_size]
-#     Qf = ctrl.P[1+end-x_size:end, 1+end-x_size:end]
+    R = ctrl.P[begin:u_size, begin:u_size]
+    Q = ctrl.P[u_size+1:u_size+x_size, u_size+1:u_size+x_size]
+    Qf = ctrl.P[1+end-x_size:end, 1+end-x_size:end]
         
-#     state_bounds = zeros(x_size*(ctrl.Nmpc-1))
-#     state_bounds[begin:size(A)[1]] = -A*(x - xeq)
+    state_bounds = zeros(x_size*(ctrl.Nmpc-1))
+    state_bounds[begin:size(A)[1]] = -A*(x - xeq)
     
-#     theta_ub = 5*pi/180.0 * ones(ctrl.Nmpc-1)
-#     theta_lb = -theta_ub
-#     phi_ub = 10*pi/180.0 * ones(ctrl.Nmpc-1)
-#     phi_lb = -phi_ub
-#     z_ub = Inf * ones(ctrl.Nmpc-1)
-#     z_lb = zeros(ctrl.Nmpc-1)
-#     T_ub = 0.5*model.m*model.g * ones(ctrl.Nmpc-1)
-#     T_lb = -0.25*model.m*model.g * ones(ctrl.Nmpc-1)
+    thrust_ub = 5.0 * ones(ctrl.Nmpc-1)
+    thrust_lb = -1.0 * ones(ctrl.Nmpc-1)
     
-#     ub = [state_bounds; theta_ub; phi_ub; z_ub; T_ub]
-#     lb = [state_bounds; theta_lb; phi_lb; z_lb; T_lb]
+    ub = [state_bounds; thrust_ub; thrust_ub; thrust_ub; thrust_ub]
+    lb = [state_bounds; thrust_lb; thrust_lb; thrust_lb; thrust_lb]
                         
-#     ctrl.ub .= ub
-#     ctrl.lb .= lb
+    ctrl.ub .= ub
+    ctrl.lb .= lb
             
-#     q = -R*(ctrl.Uref[k] - ueq)
+    q = -R*(ctrl.Uref[k] - ueq)
             
-#     # specify bounds for equality constraint
-#     for i=1:ctrl.Nmpc-2
-#         if i+k > size(ctrl.Xref)[1]
-#             new_q_row = zeros(10)
-#             q = [q; new_q_row]
-#         else
-#             new_q_row = -Q*(ctrl.Xref[k+i] - xeq)
-#             q = [q; new_q_row]
+    # populate q vector for cost function
+    for i=1:ctrl.Nmpc-2
+        if i+k > size(ctrl.Xref)[1]
+            new_q_row = zeros(x_size + u_size) # was 10
+            q = [q; new_q_row]
+        else
+            new_q_row = -Q*(ctrl.Xref[k+i] - xeq)
+            q = [q; new_q_row]
 
-#             new_q_row = -R*(ctrl.Uref[k+i] - ueq)
-#             q = [q; new_q_row]
-#         end
-#     end
+            new_q_row = -R*(ctrl.Uref[k+i] - ueq)
+            q = [q; new_q_row]
+        end
+    end
     
-#     if k+ctrl.Nmpc-1 < size(ctrl.Xref)[1]
-#         q = [q; -Qf*(ctrl.Xref[k+ctrl.Nmpc-1] - xeq)]
-#     else
-#         q = [q; zeros(8)]
-#     end
+    # add row to q vector for Qf
+    if k+ctrl.Nmpc-1 < size(ctrl.Xref)[1]
+        q = [q; -Qf*(ctrl.Xref[k+ctrl.Nmpc-1] - xeq)]
+    else
+        q = [q; zeros(x_size)]
+    end
                 
-#     ctrl.q .= q
+    ctrl.q .= q
                 
     return nothing
 end
@@ -288,6 +317,7 @@ function build_MPC_QP(Xref, Uref, tref, A, B, Q, R, Qf)
     Nd = (Nmpc-1)*(n+4)
     mpc = OSQPController(n, m, Nmpc, length(Xref), Nd)
     mpc.Xref .= Xref
+    println(size(mpc.Uref), "\t", size(Uref))
     mpc.Uref .= Uref
     mpc.times .= tref
     

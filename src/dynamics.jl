@@ -25,8 +25,8 @@ returns ẋ
 """
 function dynamics(x,u,wind_disturbance=false)
     # 3D quadrotor dynamics
-
-     # unpack state
+    
+    # unpack state
     r = x[1:3]
     q = x[4:7]
     v_B = x[8:10]
@@ -34,16 +34,7 @@ function dynamics(x,u,wind_disturbance=false)
     
     Q = rot_mat_from_quat(q)
     
-#     println(Q)
-    
-#     println("arg", sum(k_T * u))
-    F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'
-    
-#     println("\t", Q' * [0 0 -mass*g]')
-#     println("\t- ", [0 0 sum(k_T * u)]')
-    
-#     println("= force: ", F_B)
-    
+    F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'    
     τ_B = τ_mat * u
     
     # see main.ipynb for formal dynamics definition
@@ -52,7 +43,7 @@ function dynamics(x,u,wind_disturbance=false)
              1/mass * F_B - cross(ω_B, v_B),
              inv(J)*(τ_B - cross(ω_B, J*ω_B)) )
     
-    return ẋ
+    return ẋ[:,1]
 end
 
 """
