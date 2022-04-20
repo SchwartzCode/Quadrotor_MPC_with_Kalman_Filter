@@ -1,7 +1,6 @@
 using MeshCat
 using RobotZoo: Quadrotor, PlanarQuadrotor
 using CoordinateTransformations, Rotations, Colors, StaticArrays, RobotDynamics
-
 function set_mesh!(vis, model::L;
         scaling=1.0, color=colorant"black"
     ) where {L <: Union{Quadrotor, PlanarQuadrotor}} 
@@ -63,6 +62,22 @@ function line_reference(N::Int64, dt::Float64)
     return [SVector{13}(x) for x in eachcol(xref)]
 end
 
+function circle_trajectory(z,r)
+    N = length(z)
+    y = zeros(N)
+    half_N = trunc(Int, N/4)
+    y_1 = zeros(half_N)
+   
+    for i=1:half_N
+        y_1[i] = real((Complex(r^2 - (z[i])^2))^0.5)
+    end
+    y[1:half_N] = reverse(y_1)
+    y[half_N+1:2*half_N] = y_1
+    y[2*half_N+1:3*half_N] = -reverse(y_1)
+    y[3*half_N+1:N] = -y_1
+    return y
+    
+end
 """
 params
 N  - number of time steps
@@ -75,11 +90,15 @@ function flip_reference(N::Int64, dt::Float64)
     N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
     half_N_flip = Int(N_flip/2)
     
-    # TODO: make flip follow a circle where y^2 + z^2 = r^2
     x_ref = Array(zeros(N))
-    y_ref = [LinRange(-3,0,N_pre_flip); zeros(N_flip); LinRange(0,3,N_post_flip)]
+    z_flip = [LinRange(1,3,half_N_flip); LinRange(3,1,half_N_flip)]
+    r = 2
+    y_flip = circle_trajectory(z_flip,r);
+#     println(y_flip)
+#     println(z_flip)
+    y_ref = [LinRange(-3,y_flip[1],N_pre_flip); y_flip; LinRange(y_flip[end],3,N_post_flip)]
+#     println("y_ref",y_ref)
     z_ref = [ones(N_pre_flip); LinRange(1,3,half_N_flip); LinRange(3,1,half_N_flip); ones(N_post_flip)]
-    
     # init with quaternion of all 0 rad euler angles
     quat_ref = hcat(ones(N), zeros(N), zeros(N), zeros(N))
     

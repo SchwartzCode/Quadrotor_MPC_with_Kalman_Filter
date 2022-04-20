@@ -1,5 +1,5 @@
 # Taken from homework3-Q1
-
+using Random
 """
 Quadrotor Dynamics Parameters
 """
@@ -23,7 +23,7 @@ param - x <13 elem vector>: [pos (world frame),
 param - u <4 elem vector>: rpm of each motor (see main_script.ipynb for ordering)
 returns ẋ
 """
-function dynamics(x,u,wind_disturbance=false)
+function dynamics(x,u,wind_disturbance=true)
     # 3D quadrotor dynamics
     
     # unpack state
@@ -42,8 +42,13 @@ function dynamics(x,u,wind_disturbance=false)
              0.5*quat_L(q)*quat_H*ω_B,
              1/mass * F_B - cross(ω_B, v_B),
              inv(J)*(τ_B - cross(ω_B, J*ω_B)) )
-    
-    return ẋ[:,1]
+    last_x = ẋ[:,1]
+    if wind_disturbance
+        last_x[end-5:end] += 1*Random.randn(6)
+        #This didnt seem like enough to show any changes. 
+#         last_x[end-5:end] += 0.1*Random.randn(6)
+    end
+    return last_x
 end
 
 """
