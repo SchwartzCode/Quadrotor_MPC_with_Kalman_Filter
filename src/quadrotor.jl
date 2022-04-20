@@ -154,7 +154,6 @@ function simulate(quad::Quadrotor, x0, ctrl; tf=1.5, dt=0.025, kwargs...)
     for k = 1:N-1
         U[k] = get_control(ctrl, X[k], times[k])
         X[k+1] = rk4(X[k], U[k], dt)
-#         X[k+1] = discrete_dynamics(RK4, model, X[k], U[k], times[k], dt)
     end
     tend = time_ns()
     rate = N / (tend - tstart) * 1e9
