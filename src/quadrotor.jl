@@ -1,6 +1,7 @@
 using MeshCat
 using RobotZoo: Quadrotor, PlanarQuadrotor
 using CoordinateTransformations, Rotations, Colors, StaticArrays, RobotDynamics
+using Random
 function set_mesh!(vis, model::L;
         scaling=1.0, color=colorant"black"
     ) where {L <: Union{Quadrotor, PlanarQuadrotor}} 
@@ -94,11 +95,8 @@ function flip_reference(N::Int64, dt::Float64)
     z_flip = [LinRange(1,3,half_N_flip); LinRange(3,1,half_N_flip)]
     r = 2
     y_flip = circle_trajectory(z_flip,r);
-#     println(y_flip)
-#     println(z_flip)
     y_ref = [LinRange(-3,y_flip[1],N_pre_flip); y_flip; LinRange(y_flip[end],3,N_post_flip)]
-#     println("y_ref",y_ref)
-    z_ref = [ones(N_pre_flip); LinRange(1,3,half_N_flip); LinRange(3,1,half_N_flip); ones(N_post_flip)]
+    z_ref = [ones(N_pre_flip); z_flip; ones(N_post_flip)]
     # init with quaternion of all 0 rad euler angles
     quat_ref = hcat(ones(N), zeros(N), zeros(N), zeros(N))
     
@@ -148,12 +146,12 @@ RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
 # TODO @Corinne - will need to re-work this function to be 3D (not planar)
 function RobotDynamics.dynamics(model::WindyQuad, x, u)
     println("im in RobotDynamics.dynamics~~")
-
+    walk = simulate_random_walk_wind_traj(model,x)
     ẋ = rk4(x, u, dt)
     mass = model.quad.mass
     wind_mag = randn()*model.wm
-    wind_dir = Angle2d(randn()*model.wd) * model.dir
-    Fwind =  Angle2d(randn()*model.wd) * model.dir 
+    wind_dir = Angle2d(walk) * model.dir
+    Fwind =  Angle2d(walk) * model.dir 
     ẋ2 = SA[ẋ[1], ẋ[2], ẋ[3], ẋ[4] + Fwind[1]/mass, ẋ[5] + Fwind[2]/mass, ẋ[6]]
     return ẋ2
 end
@@ -180,3 +178,42 @@ function simulate(quad::Quadrotor, x0, ctrl; tf=1.5, dt=0.025, kwargs...)
     println("Controller ran at $rate Hz")
     return X,U,times
 end
+
+
+
+
+
+function simulate_random_walk_wind_traj(model::WindyQuad, x, move=1)
+    walk = model.dir
+    rand_num = Random.randn(2)
+    if rand_num[1] > 0.5
+        walk[1] = walk[k] + move
+    else
+        walk[1] = walk[k] - move
+    end
+    if rand_num[2] > 0.5
+        walk[2] = walk[k] + move
+    else
+        walk[2] = walk[k] - move
+    end
+    return walk
+#     walk = zeros(length(x),2)
+#     walk[1] = model.dir
+#     rad_to_move = deg2rad(deg_to_move)
+#     for i =1:length(walk)-1
+#         rand_num = Random.randn(2)
+#         if rand_num[1] > 0.5
+#             walk[k+1,1] = walk[k] + rad_to_move
+#         else
+#             walk[k+1,1] = walk[k] - rad_to_move
+#         end
+#         if rand_num[2] > 0.5
+#             walk[k+1,2] = walk[k] + rad_to_move
+#         else
+#             walk[k+1,2] = walk[k] - rad_to_move
+#         end
+        
+#     end
+#     return walk
+    
+end    
