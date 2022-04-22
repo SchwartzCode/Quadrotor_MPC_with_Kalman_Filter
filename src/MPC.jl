@@ -72,9 +72,9 @@ end
 Update the vectors in the QP problem for the current state `x` and time `time`.
 This should update `ctrl.q`, `ctrl.lb`, and `ctrl.ub`.
 """
-function updateQP!(ctrl::MPCController, x, time)
+function updateQP!(ctrl::MPCController, A,B, x, time)
     if isconstrained(ctrl)
-        updateQP_constrained!(ctrl, x, time)
+        updateQP_constrained!(ctrl, A,B, x, time)
     else
         updateQP_unconstrained!(ctrl, x, time)
     end
@@ -130,9 +130,9 @@ Get the control from the MPC solver by solving the QP.
 If you want to use your own QP solver, you'll need to change this
 method.
 """
-function get_control(ctrl::MPCController{OSQP.Model}, x, time)
+function get_control(ctrl::MPCController{OSQP.Model}, A, B, x, time)
     # Update the QP
-    updateQP!(ctrl, x, time)
+    updateQP!(ctrl, A, B, x, time)
     OSQP.update!(ctrl.solver, q=ctrl.q, l=ctrl.lb, u=ctrl.ub)
 
     # Solve QP
@@ -169,7 +169,7 @@ function buildQP_constrained!(ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
     A_constraint = [B[1] -I(x_size) zeros(x_size, P_cols - u_size - x_size)]
     
     # set first row of P
-    P = [R zeros(R_size[1], P_cols - R_size[2])]
+    P = [R zeros(u_size, P_cols - u_size)]
     curr_pos = u_size
     
 #     Inequality constraint matrices that will end up in A
@@ -218,8 +218,7 @@ function buildQP_constrained!(ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
     ctrl.P .= P
     
     A_constraint = [A_constraint; A_u1_constraint; A_u2_constraint; A_u3_constraint; A_u4_constraint]
-    ctrl.A .= A_constraint
-    
+    ctrl.A .= A_constraint    
     
     # Initialize the included solver
     #    If you want to use your QP solver, you should write your own
@@ -234,14 +233,14 @@ end
 Update the vectors in the QP problem for the current state `x` and time `time`.
 This should update `ctrl.q`, `ctrl.lb`, and `ctrl.ub`.
 """
-function updateQP_constrained!(ctrl::MPCController, x, time)
+function updateQP_constrained!(ctrl::MPCController, A, B, x, time)
     k = get_k(ctrl, time)
     x_size = size(ctrl.Xref[1])[1] - 1
     u_size = size(ctrl.Uref[1])[1]
     
     # TODO: define these not in place
     xeq = ctrl.Xref[end]
-    ueq = fill(mass * g / u_size, u_size)
+    ueq = ctrl.Uref[1]
     
     R = ctrl.P[begin:u_size, begin:u_size]
     Q = ctrl.P[u_size+1:u_size+x_size, u_size+1:u_size+x_size]
@@ -253,38 +252,37 @@ function updateQP_constrained!(ctrl::MPCController, x, time)
     dX = vcat([(x - ctrl.Xref[k])[1:3]' dϕ' (x - ctrl.Xref[k])[8:end]'])'
     state_bounds[begin:size(A[k])[1]] = -A[k]*dX
     
-    thrust_ub = 500.0 * ones(ctrl.Nmpc-1)
-    thrust_lb = -100.0 * ones(ctrl.Nmpc-1)
+    # TODO: move this to build
+    thrust_ub = 50000.0 * ones(ctrl.Nmpc-1)
+    thrust_lb = -10000.0 * ones(ctrl.Nmpc-1)
     
     ub = [state_bounds; thrust_ub; thrust_ub; thrust_ub; thrust_ub]
     lb = [state_bounds; thrust_lb; thrust_lb; thrust_lb; thrust_lb]
     
     ctrl.ub .= ub
     ctrl.lb .= lb
-            
-#     ctrl.q[1:u_size] .= -R*(ctrl.Uref[k] - ueq)
-            
-    # populate q vector for cost function
-    for i=1:ctrl.Nmpc-2
-        if i+k > size(ctrl.Xref)[1]
-            # past end of reference trajectory; no more cost to add
-            ctrl.q[(u_size + (i-1)*(x_size + u_size)) .+ (1:x_size)] .= zeros(x_size)
-        else
-            # TODO: the xeq here doesn't make sense, should use x maybe?
-            dϕ = ϕ(quat_L(ctrl.Xref[k+i][4:7])' * xeq[4:7])
-            dX = vcat([(xeq - ctrl.Xref[k+i])[1:3]' dϕ' (xeq - ctrl.Xref[k+i])[8:end]'])'
-            ctrl.q[(u_size + (i-1)*(x_size + u_size)) .+ (1:x_size)] .= zeros(x_size) #-Q*dX[:,1] # TODO: replace weird indexing with squeeze()
-        end
-    end
     
-    # add row to q vector for Qf
-    if k+ctrl.Nmpc-1 < size(ctrl.Xref)[1]
-        dϕ = ϕ(quat_L(ctrl.Xref[k+ctrl.Nmpc][4:7])' * xeq[4:7])
-        dX = vcat([(xeq - ctrl.Xref[k+ctrl.Nmpc])[1:3]' dϕ' (xeq - ctrl.Xref[k+ctrl.Nmpc])[8:end]'])'
-        ctrl.q[(u_size + (ctrl.Nmpc-2)*(x_size + u_size)) .+ (1:x_size)] .= zeros(x_size) #-Qf*dX[:,1] # TODO: replace weird indexing with squeeze()
-    else
-        ctrl.q[(u_size + (ctrl.Nmpc-2)*(x_size + u_size)) .+ (1:x_size)] .= zeros(x_size)
+    N = ctrl.Nmpc
+    P_rows = (N-1)*(u_size + x_size)
+    P_cols = (N-1)*(u_size + x_size)
+                
+    # Update jacobians in ctrl.A
+    ctrl.A[1:x_size, :] .= [B[k] -I(x_size) zeros(x_size, P_cols - u_size - x_size)]
+    
+    curr_pos = u_size
+    
+    for i=1:N-2
+        # Rows of A constraint matrix
+        if k+i > length(A)
+            new_A_const_row = zeros(x_size, P_cols)
+        else
+            new_A_const_row = [zeros(x_size, curr_pos) A[k+i] B[k+i] -I(x_size) zeros(x_size, P_cols - curr_pos - 2*x_size - u_size)]
+        end
+        ctrl.A[(1:x_size) .+ (i*x_size),:] .= new_A_const_row
+
+        curr_pos += x_size + u_size 
     end
+            
                 
     return nothing
 end

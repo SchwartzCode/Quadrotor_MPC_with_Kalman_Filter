@@ -92,10 +92,10 @@ function flip_reference(N::Int64, dt::Float64)
     end
     
     vx_ref = Array(zeros(N))
-    vy_ref = [3.0/(N_pre_flip/dt)*ones(N_pre_flip); zeros(N_flip); 3.0*ones(N_post_flip)]
-    vz_ref = [zeros(N_pre_flip); 2.0/(half_N_flip/dt)*ones(half_N_flip); -2.0/half_N_flip/dt*ones(half_N_flip); zeros(N_post_flip)]
-    ωy_ref = [zeros(N_pre_flip); 2*pi/(N_flip/dt)*ones(N_flip); zeros(N_post_flip)]
-    ωx_ref = Array(zeros(N))
+    vy_ref = [3.0/(N_pre_flip*dt)*ones(N_pre_flip); zeros(N_flip); 3.0/(N_pre_flip*dt)*ones(N_post_flip)]
+    vz_ref = [zeros(N_pre_flip); 2.0/(half_N_flip*dt)*ones(half_N_flip); -2.0/(half_N_flip*dt)*ones(half_N_flip); zeros(N_post_flip)]
+    ωx_ref = [zeros(N_pre_flip); 2*pi/(N_flip*dt)*ones(N_flip); zeros(N_post_flip)]
+    ωy_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
     
     xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vx_ref'; vy_ref'; vz_ref'; ωx_ref'; ωy_ref'; ωz_ref'] 
@@ -139,7 +139,7 @@ function RobotDynamics.dynamics(model::WindyQuad, x, u)
     return ẋ2
 end
 
-function simulate(quad::Quadrotor, x0, ctrl; tf=1.5, dt=0.025, kwargs...)
+function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
     model = WindyQuad(quad; kwargs...)
 
     n,m = size(model)
@@ -152,7 +152,7 @@ function simulate(quad::Quadrotor, x0, ctrl; tf=1.5, dt=0.025, kwargs...)
     tstart = time_ns()
 
     for k = 1:N-1
-        U[k] = get_control(ctrl, X[k], times[k])
+        U[k] = get_control(ctrl, A, B, X[k], times[k])
         X[k+1] = rk4(X[k], U[k], dt)
     end
     tend = time_ns()
