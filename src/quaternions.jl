@@ -37,6 +37,13 @@ function hat(ω)
             -ω[2] ω[1] 0]
 end
 
+
+function angle_of_rotation_q(q)
+    angle = acos(q[1])*2
+    return angle
+end
+
+
 function ρ(ϕ)
     # convert from ϕ to a quaternion 
     # read more: https://roboticexplorationlab.org/papers/planning_with_attitude.pdf

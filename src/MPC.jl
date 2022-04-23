@@ -250,6 +250,11 @@ function updateQP_constrained!(ctrl::MPCController, A, B, x, time)
 #     state_bounds[begin:size(A)[1]] = -A*(x - xeq)
     dϕ = ϕ(quat_L(ctrl.Xref[k][4:7])' * x[4:7])
     dX = vcat([(x - ctrl.Xref[k])[1:3]' dϕ' (x - ctrl.Xref[k])[8:end]'])'
+            
+    A_o, B_o = dynamics_jacobians(flip_ref[k],Uref[k],dt)
+    J_attitude = attitude_jacobian(flip_ref[k])
+    A_o = J_attitude'*A_o*J_attitude
+    B_o = J_attitude'*B_o
     state_bounds[begin:size(A[k])[1]] = -A[k]*dX
     
     # TODO: move this to build
