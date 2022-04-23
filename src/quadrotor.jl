@@ -1,7 +1,6 @@
 using MeshCat
 using RobotZoo: Quadrotor, PlanarQuadrotor
 using CoordinateTransformations, Rotations, Colors, StaticArrays, RobotDynamics
-
 function set_mesh!(vis, model::L;
         scaling=1.0, color=colorant"black"
     ) where {L <: Union{Quadrotor, PlanarQuadrotor}} 
@@ -74,6 +73,22 @@ function line_reference(N::Int64, dt::Float64)
     return [SVector{13}(x) for x in eachcol(xref)]
 end
 
+function circle_trajectory(z,r)
+    N = length(z)
+    y = zeros(N)
+    half_N = trunc(Int, N/4)
+    y_1 = zeros(half_N)
+   
+    for i=1:half_N
+        y_1[i] = real((Complex(r^2 - (z[i])^2))^0.5)
+    end
+    y[1:half_N] = reverse(y_1)
+    y[half_N+1:2*half_N] = y_1
+    y[2*half_N+1:3*half_N] = -reverse(y_1)
+    y[3*half_N+1:N] = -y_1
+    return y
+    
+end
 """
 params
 N  - number of time steps
