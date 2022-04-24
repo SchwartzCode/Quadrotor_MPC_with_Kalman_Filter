@@ -237,22 +237,6 @@ end
 RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
 RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
 
-# TODO @Corinne - will need to re-work this function to be 3D (not planar)
-# function wind_dynamics(model::WindyQuad, x, u)
-# # function RobotDynamics.dynamics(model::WindyQuad, x, u)
-#     println("im in RobotDynamics.dynamics~~")
-#     walk = simulate_random_walk_wind_traj(model,x)
-#     println("Walk",walk)
-#     ẋ = rk4(x, u, dt)
-#     mass = model.quad.mass
-#     wind_mag = randn()*model.wm
-#     wind_dir = Angle2d(model.wd) * model.dir
-#     Fwind =  Angle2d(model.wd) * model.dir 
-#     ẋ2 = SA[ẋ[1], ẋ[2], ẋ[3], ẋ[4] + Fwind[1]/mass, ẋ[5] + Fwind[2]/mass, ẋ[6]]
-#     println(ẋ2)
-#     return ẋ2
-# end
-
 function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
     model = WindyQuad(quad; kwargs...)
 
@@ -275,48 +259,3 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
     return X,U,times
 end
 
-# function rk4wind(model::WindyQuad,x,u,dt)
-#     # rk4 for integration
-#     k1 = dt*wind_dynamics(model,x,u)
-#     k2 = dt*wind_dynamics(model,x + k1/2,u)
-#     k3 = dt*wind_dynamics(model,x + k2/2,u)
-#     k4 = dt*wind_dynamics(model,x + k3,u)
-#     println( x + (1/6)*(k1 + 2*k2 + 2*k3 + k4))
-#     return x + (1/6)*(k1 + 2*k2 + 2*k3 + k4)
-# end
-
-
-
-# function simulate_random_walk_wind_traj(model::WindyQuad, x, move=1)
-#     walk = model.dir
-#     rand_num = Random.randn(1)[1]
-#     if rand_num < 0.25
-#         walk[1] = walk[1] + move
-#     elseif rand_num >= 0.25 && rand_num < 0.5
-#         walk[1] = walk[1] - move
-#     elseif rand_num >= 0.5 && rand_num < 0.75
-#         walk[2] = walk[2] + move
-#     else
-#         walk[2] = walk[2] - move
-#     end
-#     return walk
-# #     walk = zeros(length(x),2)
-# #     walk[1] = model.dir
-# #     rad_to_move = deg2rad(deg_to_move)
-# #     for i =1:length(walk)-1
-# #         rand_num = Random.randn(2)
-# #         if rand_num[1] > 0.5
-# #             walk[k+1,1] = walk[k] + rad_to_move
-# #         else
-# #             walk[k+1,1] = walk[k] - rad_to_move
-# #         end
-# #         if rand_num[2] > 0.5
-# #             walk[k+1,2] = walk[k] + rad_to_move
-# #         else
-# #             walk[k+1,2] = walk[k] - rad_to_move
-# #         end
-        
-# #     end
-# #     return walk
-    
-# end    
