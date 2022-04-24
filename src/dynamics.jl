@@ -13,9 +13,9 @@ k_m = 1.0 #0.1 # [N*m/rpm]
 τ_mat = [[0 ℓ*k_T 0 -ℓ*k_T]
          [-ℓ*k_T 0 ℓ*k_T 0]
          [k_m -k_m k_m -k_m]]
-wind = [1,1, 1]*1.0
 
-wd = 10
+wind = [1,1, 1]*1.0 # wind direction
+wd = 10 # std on wind angle
 
 """
 Calculate the continuous time dynamics ẋ = f(x,u), x is a vector of length 6, u is a vector of length 2.
@@ -89,42 +89,11 @@ end
 
 
 function simulate_random_walk_wind_traj(wd,x, move=1)
-    
     rand_num = Random.randn(1)[1]
     if rand_num > 0.5
         wd += move
     else
         wd -= move
     end
-#     walk = wind
-#     rand_num = Random.randn(1)[1]
-#     if rand_num < 0.25
-#         wind[1] = wind[1] + move
-#     elseif rand_num >= 0.25 && rand_num < 0.5
-#         wind[1] = wind[1] - move
-#     elseif rand_num >= 0.5 && rand_num < 0.75
-#         wind[2] = wind[2] + move
-#     else
-#         wind[2] = wind[2] - move
-#     end
-#     return walk
-#     walk = zeros(length(x),2)
-#     walk[1] = model.dir
-#     rad_to_move = deg2rad(deg_to_move)
-#     for i =1:length(walk)-1
-#         rand_num = Random.randn(2)
-#         if rand_num[1] > 0.5
-#             walk[k+1,1] = walk[k] + rad_to_move
-#         else
-#             walk[k+1,1] = walk[k] - rad_to_move
-#         end
-#         if rand_num[2] > 0.5
-#             walk[k+1,2] = walk[k] + rad_to_move
-#         else
-#             walk[k+1,2] = walk[k] - rad_to_move
-#         end
-        
-#     end
-#     return walk
     
 end    
