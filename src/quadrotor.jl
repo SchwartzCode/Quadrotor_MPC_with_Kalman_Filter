@@ -1,6 +1,7 @@
 using MeshCat
 using RobotZoo: Quadrotor, PlanarQuadrotor
 using CoordinateTransformations, Rotations, Colors, StaticArrays, RobotDynamics
+using Random
 function set_mesh!(vis, model::L;
         scaling=1.0, color=colorant"black"
     ) where {L <: Union{Quadrotor, PlanarQuadrotor}} 
@@ -115,6 +116,70 @@ function flip_reference(N::Int64, dt::Float64)
     vz_2 = -vz_1
     
     x_ref = Array(zeros(N))
+    z_flip = [LinRange(1,3,half_N_flip); LinRange(3,1,half_N_flip)]
+    r = 2
+    y_flip = circle_trajectory(z_flip,r);
+    y_ref = [LinRange(-3,y_flip[1],N_pre_flip); y_flip; LinRange(y_flip[end],3,N_post_flip)]
+    z_ref = [ones(N_pre_flip); z_flip; ones(N_post_flip)]
+    
+    # init with quaternion of all 0 rad euler angles
+    quat_ref = hcat(ones(N), zeros(N), zeros(N), zeros(N))
+    
+    # do full rotation about y axis
+#     angs = collect(LinRange(0, 2*pi, N_flip))
+    angs, ωx_flip = trapezoidal_vel(N_flip, dt, 0, 2*pi)
+    flip_angles = [tan.(angs/2) zeros(N_flip) zeros(N_flip)]
+    
+    for i=1:N_flip
+        quat_ref[N_pre_flip+i,:] .= ρ(flip_angles[i,:])
+    end
+    
+    vx_ref = Array(zeros(N))
+    vy_ref = [vy_1; zeros(N_flip); vy_2]
+    vz_ref = [zeros(N_pre_flip); vz_1; vz_2; zeros(N_post_flip)]
+    ωx_ref = [zeros(N_pre_flip); ωx_flip; zeros(N_post_flip)]
+    ωy_ref = Array(zeros(N))
+    ωz_ref = Array(zeros(N))
+    
+    vels = [vx_ref'; vy_ref'; vz_ref']
+    
+    for i = 1:N
+        Q = rot_mat_from_quat(quat_ref[i,:])
+        vels[:,i] = Q * vels[:,i]
+    end
+    
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'] 
+    return [SVector{13}(x) for x in eachcol(xref)]
+end
+
+
+
+"""
+params
+N  - number of time steps
+dt - size of time steps
+"""
+function other_flip_reference(N::Int64, dt::Float64)
+    # TODO: make pre and post flip N the same and add a tail to traj
+    N_pre_flip = Int(floor(N / 4))
+    N_flip = Int(floor(N / 2))
+    N_post_flip = Int(ceil(N / 4))
+    N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
+    half_N_flip = Int(N_flip/2)
+    
+    # trapezoidal vels for y pos/vel components
+    py_1, vy_1 = trapezoidal_vel(N_pre_flip, dt, -3, 0)
+#     py_1 = py_1 .- 3
+    py_2, vy_2 = trapezoidal_vel(N_post_flip, dt, 0, 3)
+    
+    # trapezoidal vels for z pos/vel components
+    pz_1, vz_1 = trapezoidal_vel(half_N_flip, dt, 1, 3)
+#     pz_2, vz_2 = trapezoidal_vel(half_N_flip, dt, 3, 1)
+#     pz_1 .+ 1.0
+    pz_2 = reverse(pz_1)
+    vz_2 = -vz_1
+    
+    x_ref = Array(zeros(N))
     y_ref = [py_1; zeros(N_flip); py_2]
     z_ref = [ones(N_pre_flip); pz_1; pz_2; ones(N_post_flip)]
     
@@ -172,19 +237,6 @@ end
 RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
 RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
 
-# TODO @Corinne - will need to re-work this function to be 3D (not planar)
-function RobotDynamics.dynamics(model::WindyQuad, x, u)
-    println("im in RobotDynamics.dynamics~~")
-
-    ẋ = rk4(x, u, dt)
-    mass = model.quad.mass
-    wind_mag = randn()*model.wm
-    wind_dir = Angle2d(randn()*model.wd) * model.dir
-    Fwind =  Angle2d(randn()*model.wd) * model.dir 
-    ẋ2 = SA[ẋ[1], ẋ[2], ẋ[3], ẋ[4] + Fwind[1]/mass, ẋ[5] + Fwind[2]/mass, ẋ[6]]
-    return ẋ2
-end
-
 function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
     model = WindyQuad(quad; kwargs...)
 
@@ -206,3 +258,4 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
     println("Controller ran at $rate Hz")
     return X,U,times
 end
+
