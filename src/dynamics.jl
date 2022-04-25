@@ -15,7 +15,7 @@ k_m = 1.0 #0.1 # [N*m/rpm]
          [k_m -k_m k_m -k_m]]
 
 wind = [1,1, 1]*1.0 # wind direction
-wd = 10 # std on wind angle
+wd = 0 # mean on wind angle
 
 """
 Calculate the continuous time dynamics ẋ = f(x,u), x is a vector of length 6, u is a vector of length 2.
@@ -47,7 +47,7 @@ function dynamics(x,u,wind_disturbance=true)
              inv(J)*(τ_B - cross(ω_B, J*ω_B)) )
     last_x = ẋ[:,1]
     if wind_disturbance
-        simulate_random_walk_wind_traj(wd,x)
+        simulate_random_walk_wind_traj(wd)
         
         Fwind = RotMatrix{3}(RotZ(wd)) * wind
         last_x[8] +=  Fwind[1]/mass 
@@ -88,7 +88,7 @@ end
 
 
 
-function simulate_random_walk_wind_traj(wd,x, move=1)
+function simulate_random_walk_wind_traj(wd,move=1)
     rand_num = Random.randn(1)[1]
     if rand_num > 0.5
         wd += move
