@@ -6,7 +6,7 @@ Quadrotor Dynamics Parameters
 mass = 1.0 # [kg]
 g = 9.81   # gravitational acceleration [m/s^2]
 ℓ = 0.3 # quadrotor arm length [m]
-J = diagm([0.2, 0.2, 0.05]) * mass * ℓ^2 # quadrotor moments of inertia about (x,y,z)
+J = diagm([0.004, 0.004, 0.008]) * mass * ℓ^2 # quadrotor moments of inertia about (x,y,z)
 
 k_T = 1.0 #0.1 # [N/rpm]
 k_m = 1.0 #0.1 # [N*m/rpm]
