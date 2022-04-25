@@ -1,5 +1,5 @@
 # Taken from homework3-Q1
-
+using Random
 """
 Quadrotor Dynamics Parameters
 """
@@ -14,6 +14,9 @@ k_m = 1.0 #0.1 # [N*m/rpm]
          [-ℓ*k_T 0 ℓ*k_T 0]
          [k_m -k_m k_m -k_m]]
 
+wind = [1,1, 1]*1.0 # wind direction
+wd = 0 # mean on wind angle
+
 """
 Calculate the continuous time dynamics ẋ = f(x,u), x is a vector of length 6, u is a vector of length 2.
 param - x <13 elem vector>: [pos (world frame),
@@ -23,7 +26,7 @@ param - x <13 elem vector>: [pos (world frame),
 param - u <4 elem vector>: rpm of each motor (see main_script.ipynb for ordering)
 returns ẋ
 """
-function dynamics(x,u,wind_disturbance=false)
+function dynamics(x,u,wind_disturbance=true)
     # 3D quadrotor dynamics
     
     # unpack state
@@ -42,8 +45,19 @@ function dynamics(x,u,wind_disturbance=false)
              0.5*quat_L(q)*quat_H*ω_B,
              1/mass * F_B - cross(ω_B, v_B),
              inv(J)*(τ_B - cross(ω_B, J*ω_B)) )
-    
-    return ẋ[:,1]
+    last_x = ẋ[:,1]
+    if wind_disturbance
+        simulate_random_walk_wind_traj(wd)
+        
+        Fwind = RotMatrix{3}(RotZ(wd)) * wind
+        last_x[8] +=  Fwind[1]/mass 
+        last_x[9] +=  Fwind[2]/mass 
+        last_x[10] +=  Fwind[3]/mass 
+        
+        #This didnt seem like enough to show any changes. 
+#         last_x[end-5:end] += 0.1*Random.randn(6)
+    end
+    return last_x
 end
 
 """
@@ -71,3 +85,15 @@ function dynamics_jacobians(x,u,dt)
     B = FD.jacobian(_u -> rk4(x,_u,dt),u)
     return A,B
 end
+
+
+
+function simulate_random_walk_wind_traj(wd,move=1)
+    rand_num = Random.randn(1)[1]
+    if rand_num > 0.5
+        wd += move
+    else
+        wd -= move
+    end
+    
+end    
