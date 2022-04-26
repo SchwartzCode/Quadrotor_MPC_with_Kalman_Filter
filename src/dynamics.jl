@@ -26,7 +26,7 @@ param - x <13 elem vector>: [pos (world frame),
 param - u <4 elem vector>: rpm of each motor (see main_script.ipynb for ordering)
 returns ẋ
 """
-function dynamics(x,u,wind_disturbance=true)
+function dynamics(x,u; wind_disturbance)
     # 3D quadrotor dynamics
     
     # unpack state
@@ -37,7 +37,7 @@ function dynamics(x,u,wind_disturbance=true)
     
     Q = rot_mat_from_quat(q)
     
-    F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'    
+    F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'
     τ_B = τ_mat * u
     
     # see main.ipynb for formal dynamics definition
@@ -46,7 +46,9 @@ function dynamics(x,u,wind_disturbance=true)
              1/mass * F_B - cross(ω_B, v_B),
              inv(J)*(τ_B - cross(ω_B, J*ω_B)) )
     last_x = ẋ[:,1]
+    
     if wind_disturbance
+        println("adding wind")
         simulate_random_walk_wind_traj(wd)
         
         Fwind = RotMatrix{3}(RotZ(wd)) * wind
@@ -60,17 +62,27 @@ function dynamics(x,u,wind_disturbance=true)
     return last_x
 end
 
+function simulate_random_walk_wind_traj(wd,move=1)
+    rand_num = Random.randn(1)[1]
+    if rand_num > 0.5
+        wd += move
+    else
+        wd -= move
+    end
+    
+end   
+
 """
 Integrates the dynamics ODE 1 dt forward, x_{k+1} = rk4(x_k,u_k,dt).
 
 returns x_{k+1}
 """
-function rk4(x,u,dt)
+function rk4(x,u,dt; wind=false)
     # rk4 for integration
-    k1 = dt*dynamics(x,u)
-    k2 = dt*dynamics(x + k1/2,u)
-    k3 = dt*dynamics(x + k2/2,u)
-    k4 = dt*dynamics(x + k3,u)
+    k1 = dt*dynamics(x,u, wind)
+    k2 = dt*dynamics(x + k1/2,u, wind)
+    k3 = dt*dynamics(x + k2/2,u, wind)
+    k4 = dt*dynamics(x + k3,u, wind)
     return x + (1/6)*(k1 + 2*k2 + 2*k3 + k4)
 end
 
@@ -86,14 +98,4 @@ function dynamics_jacobians(x,u,dt)
     return A,B
 end
 
-
-
-function simulate_random_walk_wind_traj(wd,move=1)
-    rand_num = Random.randn(1)[1]
-    if rand_num > 0.5
-        wd += move
-    else
-        wd -= move
-    end
-    
-end    
+ 

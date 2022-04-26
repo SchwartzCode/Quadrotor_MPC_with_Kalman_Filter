@@ -159,7 +159,7 @@ params
 N  - number of time steps
 dt - size of time steps
 """
-function other_flip_reference(N::Int64, dt::Float64)
+function simple_flip_reference(N::Int64, dt::Float64)
     # TODO: make pre and post flip N the same and add a tail to traj
     N_pre_flip = Int(floor(N / 4))
     N_flip = Int(floor(N / 2))
@@ -169,13 +169,10 @@ function other_flip_reference(N::Int64, dt::Float64)
     
     # trapezoidal vels for y pos/vel components
     py_1, vy_1 = trapezoidal_vel(N_pre_flip, dt, -3, 0)
-#     py_1 = py_1 .- 3
     py_2, vy_2 = trapezoidal_vel(N_post_flip, dt, 0, 3)
     
     # trapezoidal vels for z pos/vel components
     pz_1, vz_1 = trapezoidal_vel(half_N_flip, dt, 1, 3)
-#     pz_2, vz_2 = trapezoidal_vel(half_N_flip, dt, 3, 1)
-#     pz_1 .+ 1.0
     pz_2 = reverse(pz_1)
     vz_2 = -vz_1
     
@@ -187,7 +184,6 @@ function other_flip_reference(N::Int64, dt::Float64)
     quat_ref = hcat(ones(N), zeros(N), zeros(N), zeros(N))
     
     # do full rotation about y axis
-#     angs = collect(LinRange(0, 2*pi, N_flip))
     angs, ωx_flip = trapezoidal_vel(N_flip, dt, 0, 2*pi)
     flip_angles = [tan.(angs/2) zeros(N_flip) zeros(N_flip)]
     
@@ -237,10 +233,9 @@ end
 RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
 RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
 
-function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
-    model = WindyQuad(quad; kwargs...)
+function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_linearization=false, wind_disturbance=true, kwargs...)
 
-    n,m = size(model)
+    n,m = size(quad)
     times = range(0, tf, step=dt)
     N = length(times)
     X = [@SVector zeros(n) for k = 1:N] 
@@ -250,8 +245,8 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
     tstart = time_ns()
 
     for k = 1:N-1
-        U[k] = get_control(ctrl, A, B, X[k], times[k])
-        X[k+1] = rk4(X[k], U[k], dt)
+        U[k] = get_control(ctrl, A, B, X[k], times[k], relinearize=online_linearization)
+        X[k+1] = rk4(X[k], U[k], dt, wind=wind_disturbance)
     end
     tend = time_ns()
     rate = N / (tend - tstart) * 1e9

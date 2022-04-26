@@ -130,7 +130,7 @@ Get the control from the MPC solver by solving the QP.
 If you want to use your own QP solver, you'll need to change this
 method.
 """
-function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time)
+function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; relinearize=true)
     
     # Update the QP
     updateQP!(ctrl, A_traj, B_traj, x, time)
@@ -142,20 +142,21 @@ function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time)
     
     k = get_k(ctrl, time)
     
-    println(k)
-    
-    U_future = []
-    for i=0:ctrl.Nmpc-2
-        if i+k > length(ctrl.Xref)
-            break
-        else
-            # rollout trajectory and update 
-            u_updated = ctrl.Uref[k+i] + results.x[(1:4) .+ (length(x)-1+4)*(i)]
-            Ai, Bi = dynamics_jacobians(x,u_updated,dt)
-            J_attitude = attitude_jacobian(x)
-            A_traj[k+i] = J_attitude' * Ai * J_attitude
-            B_traj[k+i] = J_attitude' * Bi
-            x = rk4(x, u_updated, dt)
+    if relinearize
+        println(k)
+        U_future = []
+        for i=0:ctrl.Nmpc-2
+            if i+k > length(ctrl.Xref)
+                break
+            else
+                # rollout trajectory and update 
+                u_updated = ctrl.Uref[k+i] + results.x[(1:4) .+ (length(x)-1+4)*(i)]
+                Ai, Bi = dynamics_jacobians(x,u_updated,dt)
+                J_attitude = attitude_jacobian(x)
+                A_traj[k+i] = J_attitude' * Ai * J_attitude
+                B_traj[k+i] = J_attitude' * Bi
+                x = rk4(x, u_updated, dt)
+            end
         end
     end
     
@@ -288,7 +289,7 @@ function updateQP_constrained!(ctrl::MPCController, A, B, x, time)
     state_bounds[begin:size(A[k])[1]] = -A_o*dX
     
     # TODO: move this to build
-    thrust_ub = 10.0 * ones(ctrl.Nmpc-1)
+    thrust_ub = 15.0 * ones(ctrl.Nmpc-1)
     thrust_lb = -5.0 * ones(ctrl.Nmpc-1)
     
     ub = [state_bounds; thrust_ub; thrust_ub; thrust_ub; thrust_ub]
