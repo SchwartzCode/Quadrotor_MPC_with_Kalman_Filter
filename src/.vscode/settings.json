@@ -1,0 +1,12 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/cory/Documents/salus_ws/devel/lib/python2.7/dist-packages",
+        "/home/cory/ws/frankapy-public/catkin_ws/devel/lib/python2.7/dist-packages",
+        "/opt/ros/melodic/lib/python2.7/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/cory/Documents/salus_ws/devel/lib/python2.7/dist-packages",
+        "/home/cory/ws/frankapy-public/catkin_ws/devel/lib/python2.7/dist-packages",
+        "/opt/ros/melodic/lib/python2.7/dist-packages"
+    ]
+}

@@ -104,7 +104,7 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
 
     quad = ρ([tan.(pi/2/2), 0, 0])
     Q = rot_mat_from_quat(quad)
-    vels =   Q * [0, 0, 2.0/(N_flip*dt)]
+    vels = Q * [0, 0, 2.0/(N_flip*dt)]
     #fly to pos 1 of flip
                   #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
     x0 = X1[end]
@@ -115,7 +115,7 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
 #     #fly to top of flip  
     quad =  ρ([tan.(pi/2), 0, 0])
     Q = rot_mat_from_quat(quad)
-    vels =   Q * [0, 0, 2.0/(N_flip*dt)]
+    vels = Q * [0, 0, 2.0/(N_flip*dt)]
                   #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
     x0 = X2[end]
     xf = @SVector [0, 0, 6, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
@@ -124,7 +124,7 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
    #fly to pos2 of flip    
     quad = ρ([tan.(3*pi/2), 0, 0])
     Q = rot_mat_from_quat(quad)
-    vels =  Q * [0, 0,-2.0/(N_flip*dt)]
+    vels = Q * [0, 0,-2.0/(N_flip*dt)]
                   #x   y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
     x0 = X3[end]
     xf = @SVector [0, -3, 3,quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
@@ -160,9 +160,9 @@ end
  
 function altro_reference(N::Int64, dt::Float64, model, x0, xf)
     n,m = RobotDynamics.dims(model)
-    Q = 100.0*Diagonal(@SVector ones(n))
-    Qf = 1000.0*Diagonal(@SVector ones(n))
-    R = 1.0*Diagonal(@SVector ones(m))
+    Q = 1.0*Diagonal(@SVector ones(n))
+    Qf = 1.0*Diagonal(@SVector ones(n))
+    R = 100.0*Diagonal(@SVector ones(m))
 #     Q = 1.0e-2*Diagonal(@SVector ones(n)) * dt
 #     Qf = 100.0*Diagonal(@SVector ones(n))
 #     R = 1.0e-1*Diagonal(@SVector ones(m)) * dt
