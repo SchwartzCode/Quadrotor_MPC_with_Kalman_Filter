@@ -143,6 +143,7 @@ function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; r
     k = get_k(ctrl, time)
     
     if relinearize
+        # NOTE: this should not be used, leaving it for now
         println(k)
         U_future = []
         for i=0:ctrl.Nmpc-2
@@ -162,16 +163,6 @@ function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; r
     
     return ctrl.Uref[k] + Δu
     
-#     updating Uref every solve
-#     for i=0:ctrl.Nmpc-2
-#         if i+k > length(ctrl.Xref)
-#             continue
-#         else
-#             ctrl.Uref[k+i] += results.x[(1:4) .+ (length(x)-1+4)*(i)]
-#         end
-#     end
-    
-#     return ctrl.Uref[k]
 end
 
 
@@ -329,8 +320,11 @@ Create MPC object and solve
 """
 function build_MPC_QP(Xref, Uref, tref, A, B, Q, R, Qf)
     # Initialize the constrained MPC controller
-    Nd = (Nmpc-1)*(n-1+m)
-    mpc = OSQPController(n-1, m, Nmpc, length(Xref), Nd)
+    n = size(B[1])[1]
+    m = size(B[1])[2]
+
+    Nd = (Nmpc-1)*(n+m)
+    mpc = OSQPController(n, m, Nmpc, length(Xref), Nd)
     mpc.Xref .= Xref
     mpc.Uref .= Uref
     mpc.times .= tref

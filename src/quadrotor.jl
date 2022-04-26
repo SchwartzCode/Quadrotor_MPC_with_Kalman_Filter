@@ -31,7 +31,8 @@ end
 function visualize!(vis, model, tf::Real, X)
     fps = Int(round((length(X)-1)/tf))
     anim = MeshCat.Animation(fps)
-    n = state_dim(model)
+    n = length(X[1])
+    
     for (k,x) in enumerate(X)
         atframe(anim, k) do
             x = X[k]
@@ -69,9 +70,10 @@ function line_reference(N::Int64, dt::Float64)
     ωx_ref = Array(zeros(N))
     ωy_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
+    wind_ests = Array(zeros(N,3))
     
-    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vx_ref'; vy_ref'; vz_ref'; ωx_ref'; ωy_ref'; ωz_ref'] 
-    return [SVector{13}(x) for x in eachcol(xref)]
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vx_ref'; vy_ref'; vz_ref'; ωx_ref'; ωy_ref'; ωz_ref'; wind_ests'] 
+    return [SVector{16}(x) for x in eachcol(xref)]
 end
 
 function circle_trajectory(z,r)
@@ -140,6 +142,7 @@ function flip_reference(N::Int64, dt::Float64)
     ωx_ref = [zeros(N_pre_flip); ωx_flip; zeros(N_post_flip)]
     ωy_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
+    wind_ests = Array(zeros(N,3))
     
     vels = [vx_ref'; vy_ref'; vz_ref']
     
@@ -148,8 +151,8 @@ function flip_reference(N::Int64, dt::Float64)
         vels[:,i] = Q * vels[:,i]
     end
     
-    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'] 
-    return [SVector{13}(x) for x in eachcol(xref)]
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'; wind_ests'] 
+    return [SVector{16}(x) for x in eachcol(xref)]
 end
 
 
@@ -197,6 +200,7 @@ function simple_flip_reference(N::Int64, dt::Float64)
     ωx_ref = [zeros(N_pre_flip); ωx_flip; zeros(N_post_flip)]
     ωy_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
+    wind_ests = Array(zeros(N,3))
     
     vels = [vx_ref'; vy_ref'; vz_ref']
     
@@ -205,37 +209,16 @@ function simple_flip_reference(N::Int64, dt::Float64)
         vels[:,i] = Q * vels[:,i]
     end
     
-    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'] 
-    return [SVector{13}(x) for x in eachcol(xref)]
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'; wind_ests'] 
+    return [SVector{16}(x) for x in eachcol(xref)]
 end
 
-function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::AbstractModel,
-        x, u, t, dt) where {Q<:RobotDynamics.Explicit}
-    z = KnotPoint(x, u, dt, t)
-    RobotDynamics.discrete_jacobian!(Q, ∇f, model, z)
-end
-
-struct WindyQuad <: AbstractModel
-    quad::Quadrotor
-    dir::MVector{2,Float64}   # wind direction
-    wd::Float64               # std on wind angle
-    wm::Float64               # std on wind magnitude
-end
-
-# TODO @Corinne - will need to change this struct to be 3D
-function WindyQuad(quad::Quadrotor;
-        wind = [1,1]*1.0,
-        wd = deg2rad(10),
-        wm = 0.01,
-    )
-    WindyQuad(quad, SA_F64[wind[1], wind[2]], Float64(wd), Float64(wm)) 
-end
-RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
-RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
 
 function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_linearization=false, wind_disturbance=true, kwargs...)
 
-    n,m = size(quad)
+    n = length(x0)
+    m = size(B[1])[2]
+    
     times = range(0, tf, step=dt)
     N = length(times)
     X = [@SVector zeros(n) for k = 1:N] 

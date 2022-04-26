@@ -14,7 +14,7 @@ k_m = 1.0 #0.1 # [N*m/rpm]
          [-ℓ*k_T 0 ℓ*k_T 0]
          [k_m -k_m k_m -k_m]]
 
-wind = [1,1, 1]*1.0 # wind direction
+unit_vec = [1,1, 1]*1.0 # wind direction
 wd = 0 # mean on wind angle
 
 """
@@ -24,9 +24,14 @@ param - x <13 elem vector>: [pos (world frame),
                              velocity (body frame),
                              angular velocity (body frame)]
 param - u <4 elem vector>: rpm of each motor (see main_script.ipynb for ordering)
+param - wind_distrurbance <boolean>: if true, wind disturbance is added to state derivative
 returns ẋ
+
+NOTE:
+ANY CHANGES MADE TO THIS FUNCTION ALSO NEED TO BE MADE TO KF_dynamics_model()
+IF THE KALMAN FILTER IS TO WORK
 """
-function dynamics(x,u; wind_disturbance)
+function dynamics(x,u,wind_disturbance)
     # 3D quadrotor dynamics
     
     # unpack state
@@ -34,32 +39,60 @@ function dynamics(x,u; wind_disturbance)
     q = x[4:7]
     v_B = x[8:10]
     ω_B = x[11:13]
+#     wind = x[14:16] # unused in this func
     
     Q = rot_mat_from_quat(q)
     
     F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'
     τ_B = τ_mat * u
     
-    # see main.ipynb for formal dynamics definition
+    # see main_script.ipynb for formal dynamics definition
     ẋ = vcat(Q*v_B, 
              0.5*quat_L(q)*quat_H*ω_B,
              1/mass * F_B - cross(ω_B, v_B),
-             inv(J)*(τ_B - cross(ω_B, J*ω_B)) )
+             inv(J)*(τ_B - cross(ω_B, J*ω_B)),
+             zeros(3)) # wind estimate is updated by Kalman filter; not here in dynamics
     last_x = ẋ[:,1]
     
     if wind_disturbance
-        println("adding wind")
+        # apply wind disturbance to state
         simulate_random_walk_wind_traj(wd)
+        # multiply by Q' to move wind into body frame (velocity state is in body frame)
+        wind = Q'*RotMatrix{3}(RotZ(wd)) * unit_vec
         
-        Fwind = RotMatrix{3}(RotZ(wd)) * wind
         last_x[8] +=  Fwind[1]/mass 
         last_x[9] +=  Fwind[2]/mass 
         last_x[10] +=  Fwind[3]/mass 
-        
-        #This didnt seem like enough to show any changes. 
-#         last_x[end-5:end] += 0.1*Random.randn(6)
     end
     return last_x
+end
+
+"""
+Same as dynamics() but uses state estimate of wind instead of actual wind
+"""
+function KF_dynamics_model(x,u)
+    # 3D quadrotor dynamics
+    
+    # unpack state
+    r = x[1:3]
+    q = x[4:7]
+    v_B = x[8:10]
+    ω_B = x[11:13]
+    wind = x[14:16] # unused in this func
+    
+    Q = rot_mat_from_quat(q)
+    
+    F_B = Q' * ([0 0 -mass*g]' + wind) + [0 0 sum(k_T * u)]'
+    τ_B = τ_mat * u
+    
+    # see main_script.ipynb for formal dynamics definition
+    ẋ = vcat(Q*v_B, 
+             0.5*quat_L(q)*quat_H*ω_B,
+             1/mass * F_B - cross(ω_B, v_B),
+             inv(J)*(τ_B - cross(ω_B, J*ω_B)),
+             zeros(3)) # FIXME: estimate of wind dynamics goes here
+    
+    return ẋ[:,1]
 end
 
 function simulate_random_walk_wind_traj(wd,move=1)
@@ -98,4 +131,26 @@ function dynamics_jacobians(x,u,dt)
     return A,B
 end
 
+
+"""
+Integrates the dynamics ODE 1 dt forward, x_{k+1} = rk4(x_k,u_k,dt).
+
+returns x_{k+1}
+"""
+function KF_rk4(x,u,dt; wind=false)
+    # rk4 for integration
+    k1 = dt*KF_dynamics_model(x,u)
+    k2 = dt*KF_dynamics_model(x + k1/2,u)
+    k3 = dt*KF_dynamics_model(x + k2/2,u)
+    k4 = dt*KF_dynamics_model(x + k3,u)
+    return x + (1/6)*(k1 + 2*k2 + 2*k3 + k4)
+end
+
+
+function KF_dynamics_jacobians(x,u,dt)
+    # returns the discrete time dynamics jacobians using state wind estimate
+    A = FD.jacobian(_x -> rk4(_x,u,dt),x)
+    B = FD.jacobian(_u -> rk4(x,_u,dt),u)
+    return A,B
+end
  
