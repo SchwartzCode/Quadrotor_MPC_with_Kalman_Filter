@@ -97,13 +97,7 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
     N_post_flip = Int(ceil(N / 4))
     N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
    
-        
-#     vx_ref = Array(zeros(N))
-#     vy_ref = [vy_1; zeros(N_flip); vy_2]
-#     vz_ref = [zeros(N_pre_flip); vz_1; vz_2; zeros(N_post_flip)]
-#     ωx_ref = [zeros(N_pre_flip); ωx_flip; zeros(N_post_flip)]
-#     ωy_ref = Array(zeros(N))
-#     ωz_ref = Array(zeros(N))
+       
     # Define initial and final conditions
     #fly to position to start flip
                  #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
