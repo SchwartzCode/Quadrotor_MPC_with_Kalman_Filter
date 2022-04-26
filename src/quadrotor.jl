@@ -2,6 +2,10 @@ using MeshCat
 using RobotZoo: Quadrotor, PlanarQuadrotor
 using CoordinateTransformations, Rotations, Colors, StaticArrays, RobotDynamics
 using Random
+using TrajectoryOptimization
+# using TrajOptPlots
+using Altro
+
 function set_mesh!(vis, model::L;
         scaling=1.0, color=colorant"black"
     ) where {L <: Union{Quadrotor, PlanarQuadrotor}} 
@@ -31,7 +35,7 @@ end
 function visualize!(vis, model, tf::Real, X)
     fps = Int(round((length(X)-1)/tf))
     anim = MeshCat.Animation(fps)
-    n = state_dim(model)
+    n,m = RobotDynamics.dims(model)
     for (k,x) in enumerate(X)
         atframe(anim, k) do
             x = X[k]
@@ -40,6 +44,157 @@ function visualize!(vis, model, tf::Real, X)
     end
     setanimation!(vis, anim)
 end
+
+
+
+function altro_reference_line(N::Int64, dt::Float64, model)
+    n,m = RobotDynamics.dims(model)
+    # Define initial and final conditions
+    x0 = @SVector [0, -1, 0.5, 1, 0, 0, 0, 2.0/(N*dt), 2.0/(N*dt),2.0/(N*dt),0, 0, 0] 
+    xf = @SVector [2, 1, 2.5, 1, 0, 0, 0, 2.0/(N*dt), 2.0/(N*dt),2.0/(N*dt),0, 0, 0] 
+    Q = 1.0e-2*Diagonal(@SVector ones(n)) * dt
+    Qf = 100.0*Diagonal(@SVector ones(n))
+    R = 1.0e-1*Diagonal(@SVector ones(m)) * dt
+    println(size(Q))
+    println(size(xf))
+    # Set up
+    obj = LQRObjective(Q,R,Qf,xf,N)
+    # Add constraints
+    conSet = ConstraintList(n,m,N)
+    u_bnd = 3.0
+        # TODO: move this to build
+    thrust_ub = 10.0
+    thrust_lb = -5.0
+  
+    bnd = BoundConstraint(n, m, u_min=thrust_lb, u_max=thrust_ub)
+    goal = GoalConstraint(xf)
+    add_constraint!(conSet, bnd, 1:N-1)
+    add_constraint!(conSet, goal, N)
+    # Initialization
+    u0 = @SVector fill(0.01,m)
+    U0 = [u0 for k = 1:N-1]
+    # Define problem
+    tf = (N-1)* dt
+    prob = Problem(model, obj, x0, tf, xf=xf, constraints=conSet)
+    initial_controls!(prob, U0)
+    # Solve with ALTRO
+    opts = SolverOptions(
+        cost_tolerance_intermediate=1e-2,
+        penalty_scaling=10.,
+        penalty_initial=1.0
+    )
+    altro = ALTROSolver(prob, opts)
+    solve!(altro)
+    # Extract the solution
+    X = states(altro)
+    println(X)
+    return X
+end
+function altro_reference_circle(N::Int64, dt::Float64, model)
+    N_pre_flip = Int(floor(N / 4))
+    N_flip = Int(floor(N / 2 /4))
+    println(N_flip)
+    N_post_flip = Int(ceil(N / 4))
+    N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
+   
+        
+#     vx_ref = Array(zeros(N))
+#     vy_ref = [vy_1; zeros(N_flip); vy_2]
+#     vz_ref = [zeros(N_pre_flip); vz_1; vz_2; zeros(N_post_flip)]
+#     ωx_ref = [zeros(N_pre_flip); ωx_flip; zeros(N_post_flip)]
+#     ωy_ref = Array(zeros(N))
+#     ωz_ref = Array(zeros(N))
+    # Define initial and final conditions
+    #fly to position to start flip
+                 #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    x0 = @SVector [0, -3, 1, 1, 0, 0, 0, 0, 2.0/(N*dt), 0, 0, 0, 0] 
+    xf = @SVector [0, 0,  1, 1, 0, 0, 0, 0, 2.0/(N*dt), 0, 0, 0, 0] 
+    X1 = altro_reference(N_pre_flip, dt, model, x0, xf)
+    #fly to pos 1 of flip
+                 #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    x0 = X1[end]
+    xf = @SVector [0, 3,  3, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    X2 = altro_reference(N_flip, dt, model, x0, xf)
+    
+#     #fly to top of flip    
+                 #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    x0 = X2[end]
+    xf = @SVector [0, 0,  6, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    X3 = altro_reference(N_flip, dt, model, x0, xf)
+    
+   #fly to pos2 of flip    
+                  #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    x0 = X3[end]
+    xf = @SVector [0, -3,  3, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    X4 = altro_reference(N_flip, dt, model, x0, xf)
+    
+    #fly to end of flip    
+                  #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    x0 = X4[end]
+    xf = @SVector [0, 0,  1, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    X5 = altro_reference(N_flip, dt, model, x0, xf)
+    
+    #fly to goal
+                     #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    x0 = X5[end] 
+    xf = @SVector [0, 3,  1, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    X6 = altro_reference(N_post_flip, dt, model, x0, xf)
+    
+    X = vcat(X1, X2,X3, X4,X5, X6)
+    println(size(X))
+    return X
+    
+#                   #x  y   z    w  x  y  z  xv          vy          vz          ωx ωy ωz        
+#     x0 = @SVector [0, -1, 0.5, 1, 0, 0, 0, 2.0/(N*dt), 2.0/(N*dt), 2.0/(N*dt), 0, 0, 0] 
+#     xf = @SVector [2, 1,  2.5, 1, 0, 0, 0, 2.0/(N*dt), 2.0/(N*dt), 2.0/(N*dt), 0, 0, 0] 
+end
+    
+ 
+function altro_reference(N::Int64, dt::Float64, model, x0, xf)
+    n,m = RobotDynamics.dims(model)
+    Q = 1.0e-2*Diagonal(@SVector ones(n)) * dt
+    Qf = 100.0*Diagonal(@SVector ones(n))
+    R = 1.0e-1*Diagonal(@SVector ones(m)) * dt
+    println(size(Q))
+    println(size(xf))
+    # Set up
+    obj = LQRObjective(Q,R,Qf,xf,N)
+    # Add constraints
+    conSet = ConstraintList(n,m,N)
+        
+    #TODO: MAKE THIS NOT MAGIC NUMBERS
+    u_bnd = 3.0
+    thrust_ub = 10.0
+    thrust_lb = -5.0
+  
+    bnd = BoundConstraint(n, m, u_min=thrust_lb, u_max=thrust_ub)
+    goal = GoalConstraint(xf)
+    add_constraint!(conSet, bnd, 1:N-1)
+    add_constraint!(conSet, goal, N)
+    # Initialization
+    u0 = @SVector fill(0.01,m)
+    U0 = [u0 for k = 1:N-1]
+    # Define problem
+    tf = (N-1)* dt
+    prob = Problem(model, obj, x0, tf, xf=xf, constraints=conSet)
+    initial_controls!(prob, U0)
+    # Solve with ALTRO
+    opts = SolverOptions(
+        cost_tolerance_intermediate=1e-2,
+        penalty_scaling=10.,
+        penalty_initial=1.0
+    )
+    altro = ALTROSolver(prob, opts)
+    solve!(altro)
+    # Extract the solution
+    X = states(altro)
+    return X
+end
+
+
+
+
+
 
 function trapezoidal_vel(N::Int64, dt::Float64, p0, pf)
     quarter_N = Int(floor(N / 4))
@@ -213,34 +368,34 @@ function other_flip_reference(N::Int64, dt::Float64)
     return [SVector{13}(x) for x in eachcol(xref)]
 end
 
-function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::AbstractModel,
-        x, u, t, dt) where {Q<:RobotDynamics.Explicit}
-    z = KnotPoint(x, u, dt, t)
-    RobotDynamics.discrete_jacobian!(Q, ∇f, model, z)
-end
+# function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::AbstractModel,
+#         x, u, t, dt) where {Q<:RobotDynamics.Explicit}
+#     z = KnotPoint(x, u, dt, t)
+#     RobotDynamics.discrete_jacobian!(Q, ∇f, model, z)
+# end
 
-struct WindyQuad <: AbstractModel
-    quad::Quadrotor
-    dir::MVector{2,Float64}   # wind direction
-    wd::Float64               # std on wind angle
-    wm::Float64               # std on wind magnitude
-end
+# struct WindyQuad <: AbstractModel
+#     quad::Quadrotor
+#     dir::MVector{2,Float64}   # wind direction
+#     wd::Float64               # std on wind angle
+#     wm::Float64               # std on wind magnitude
+# end
 
-# TODO @Corinne - will need to change this struct to be 3D
-function WindyQuad(quad::Quadrotor;
-        wind = [1,1]*1.0,
-        wd = deg2rad(10),
-        wm = 0.01,
-    )
-    WindyQuad(quad, SA_F64[wind[1], wind[2]], Float64(wd), Float64(wm)) 
-end
-RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
-RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
+# # TODO @Corinne - will need to change this struct to be 3D
+# function WindyQuad(quad::Quadrotor;
+#         wind = [1,1]*1.0,
+#         wd = deg2rad(10),
+#         wm = 0.01,
+#     )
+#     WindyQuad(quad, SA_F64[wind[1], wind[2]], Float64(wd), Float64(wm)) 
+# end
+# RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
+# RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
 
 function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
-    model = WindyQuad(quad; kwargs...)
+#     model = WindyQuad(quad; kwargs...)
 
-    n,m = size(model)
+    n,m = size(quad)
     times = range(0, tf, step=dt)
     N = length(times)
     X = [@SVector zeros(n) for k = 1:N] 

@@ -26,7 +26,7 @@ param - x <13 elem vector>: [pos (world frame),
 param - u <4 elem vector>: rpm of each motor (see main_script.ipynb for ordering)
 returns ẋ
 """
-function dynamics(x,u,wind_disturbance=true)
+function dynamics(x,u,wind_disturbance=false)
     # 3D quadrotor dynamics
     
     # unpack state
