@@ -55,15 +55,12 @@ function altro_reference_line(N::Int64, dt::Float64, model)
     Q = 1.0e-2*Diagonal(@SVector ones(n)) * dt
     Qf = 100.0*Diagonal(@SVector ones(n))
     R = 1.0e-1*Diagonal(@SVector ones(m)) * dt
-    println(size(Q))
-    println(size(xf))
     # Set up
     obj = LQRObjective(Q,R,Qf,xf,N)
     # Add constraints
     conSet = ConstraintList(n,m,N)
-    u_bnd = 3.0
         # TODO: move this to build
-    thrust_ub = 10.0
+    thrust_ub = 5.0
     thrust_lb = -5.0
   
     bnd = BoundConstraint(n, m, u_min=thrust_lb, u_max=thrust_ub)
@@ -87,55 +84,72 @@ function altro_reference_line(N::Int64, dt::Float64, model)
     solve!(altro)
     # Extract the solution
     X = states(altro)
-    println(X)
     return X
 end
 function altro_reference_circle(N::Int64, dt::Float64, model)
     N_pre_flip = Int(floor(N / 4))
     N_flip = Int(floor(N / 2 /4))
-    println(N_flip)
     N_post_flip = Int(ceil(N / 4))
     N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
    
-       
     # Define initial and final conditions
     #fly to position to start flip
-                 #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-    x0 = @SVector [0, -3, 1, 1, 0, 0, 0, 0, 2.0/(N*dt), 0, 0, 0, 0] 
-    xf = @SVector [0, 0,  1, 1, 0, 0, 0, 0, 2.0/(N*dt), 0, 0, 0, 0] 
+    quad =[1, 0, 0, 0]
+    Q = rot_mat_from_quat([1, 0, 0, 0])
+    vels =   Q * [0, 2.0/(N_pre_flip*dt), 0]
+                  #x  y    z  w  x  y  z  vx   vy                vz ωx ωy ωz        
+    x0 = @SVector [0, -3, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
+    xf = @SVector [0, 0,  1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
     X1 = altro_reference(N_pre_flip, dt, model, x0, xf)
+
+    quad = ρ([tan.(pi/2/2), 0, 0])
+    Q = rot_mat_from_quat(quad)
+    vels =   Q * [0, 0, 2.0/(N_flip*dt)]
     #fly to pos 1 of flip
-                 #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+                  #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
     x0 = X1[end]
-    xf = @SVector [0, 3,  3, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    xf = @SVector [0, 3, 3, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0]
     X2 = altro_reference(N_flip, dt, model, x0, xf)
-    
-#     #fly to top of flip    
-                 #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    first_angle = ρ([tan.(pi/2), 0, 0])
+
+#     #fly to top of flip  
+    quad =  ρ([tan.(pi/2), 0, 0])
+    Q = rot_mat_from_quat(quad)
+    vels =   Q * [0, 0, 2.0/(N_flip*dt)]
+                  #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
     x0 = X2[end]
-    xf = @SVector [0, 0,  6, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    xf = @SVector [0, 0, 6, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
     X3 = altro_reference(N_flip, dt, model, x0, xf)
-    
+
    #fly to pos2 of flip    
-                  #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    quad = ρ([tan.(3*pi/2), 0, 0])
+    Q = rot_mat_from_quat(quad)
+    vels =  Q * [0, 0,-2.0/(N_flip*dt)]
+                  #x   y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
     x0 = X3[end]
-    xf = @SVector [0, -3,  3, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    xf = @SVector [0, -3, 3,quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
     X4 = altro_reference(N_flip, dt, model, x0, xf)
-    
+    first_angle = ρ([tan.(pi), 0, 0])
+
     #fly to end of flip    
-                  #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    quad = ρ([tan.(pi), 0, 0])
+    Q = rot_mat_from_quat(quad)
+    vels = Q * [0, 0,-2.0/(N_flip*dt)]
+                  #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
     x0 = X4[end]
-    xf = @SVector [0, 0,  1, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    xf = @SVector [0, 0, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
     X5 = altro_reference(N_flip, dt, model, x0, xf)
     
     #fly to goal
-                     #x  y    z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+    quad =[1,0,0,0]
+    Q = rot_mat_from_quat(quad)
+    vels = Q * [0, 2.0/(N_post_flip*dt),0]
+                  #x  y   z  w  x  y  z  vx  vy        vz ωx ωy ωz        
     x0 = X5[end] 
-    xf = @SVector [0, 3,  1, 1, 0, 0, 0, 0, 2.0/(N*dt),2.0/(N*dt), 0, 0, 0] 
+    xf = @SVector [0, 3, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
     X6 = altro_reference(N_post_flip, dt, model, x0, xf)
-    
-    X = vcat(X1, X2,X3, X4,X5, X6)
-    println(size(X))
+    X = vcat(X1, X2, X3, X4, X5, X6)
+
     return X
     
 #                   #x  y   z    w  x  y  z  xv          vy          vz          ωx ωy ωz        
@@ -146,20 +160,20 @@ end
  
 function altro_reference(N::Int64, dt::Float64, model, x0, xf)
     n,m = RobotDynamics.dims(model)
-    Q = 1.0e-2*Diagonal(@SVector ones(n)) * dt
-    Qf = 100.0*Diagonal(@SVector ones(n))
-    R = 1.0e-1*Diagonal(@SVector ones(m)) * dt
-    println(size(Q))
-    println(size(xf))
+    Q = 100.0*Diagonal(@SVector ones(n))
+    Qf = 1000.0*Diagonal(@SVector ones(n))
+    R = 1.0*Diagonal(@SVector ones(m))
+#     Q = 1.0e-2*Diagonal(@SVector ones(n)) * dt
+#     Qf = 100.0*Diagonal(@SVector ones(n))
+#     R = 1.0e-1*Diagonal(@SVector ones(m)) * dt
     # Set up
     obj = LQRObjective(Q,R,Qf,xf,N)
     # Add constraints
     conSet = ConstraintList(n,m,N)
         
     #TODO: MAKE THIS NOT MAGIC NUMBERS
-    u_bnd = 3.0
-    thrust_ub = 10.0
-    thrust_lb = -5.0
+    thrust_ub = 50.0
+    thrust_lb = -50.0
   
     bnd = BoundConstraint(n, m, u_min=thrust_lb, u_max=thrust_ub)
     goal = GoalConstraint(xf)
@@ -184,10 +198,6 @@ function altro_reference(N::Int64, dt::Float64, model, x0, xf)
     X = states(altro)
     return X
 end
-
-
-
-
 
 
 function trapezoidal_vel(N::Int64, dt::Float64, p0, pf)
@@ -362,32 +372,7 @@ function other_flip_reference(N::Int64, dt::Float64)
     return [SVector{13}(x) for x in eachcol(xref)]
 end
 
-# function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::AbstractModel,
-#         x, u, t, dt) where {Q<:RobotDynamics.Explicit}
-#     z = KnotPoint(x, u, dt, t)
-#     RobotDynamics.discrete_jacobian!(Q, ∇f, model, z)
-# end
-
-# struct WindyQuad <: AbstractModel
-#     quad::Quadrotor
-#     dir::MVector{2,Float64}   # wind direction
-#     wd::Float64               # std on wind angle
-#     wm::Float64               # std on wind magnitude
-# end
-
-# # TODO @Corinne - will need to change this struct to be 3D
-# function WindyQuad(quad::Quadrotor;
-#         wind = [1,1]*1.0,
-#         wd = deg2rad(10),
-#         wm = 0.01,
-#     )
-#     WindyQuad(quad, SA_F64[wind[1], wind[2]], Float64(wd), Float64(wm)) 
-# end
-# RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
-# RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
-
 function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
-#     model = WindyQuad(quad; kwargs...)
 
     n,m = size(quad)
     times = range(0, tf, step=dt)
