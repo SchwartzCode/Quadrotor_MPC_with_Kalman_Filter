@@ -86,15 +86,14 @@ end
 
 
 
-function simulate_random_walk_wind_traj!(X, wind,move=1)
+function simulate_random_walk_wind_traj!(X, wind,move=0.1)
     rand_num = Random.rand()
-    
     if rand_num < 0.5
        @set! wind.wd = wind.wd + move
     else
        @set! wind.wd = wind.wd - move
     end
-    Fwind = RotMatrix{3}(RotZ(wind.wd)) * wind.wind_dir
+    Fwind = RotMatrix{3}(RotZ(deg2rad(wind.wd))) * wind.wind_dir
     X[8] +=  Fwind[1]/mass 
     X[9] +=  Fwind[2]/mass 
     X[10] +=  Fwind[3]/mass 
