@@ -21,16 +21,18 @@ Q_t = 1e-6*I(16)
 """
 correct estimate given error in state vs actual state
 """
-function EKF_correct(x_pred, measurement, Σ_pred, dt)
+function EKF_correct(x_pred, u, measurement, Σ_pred, dt)
     
     H_t = [I(13) zeros(13,3); zeros(3,16)]
     # effect wind has on velocity
-    Q = rot_mat_from_quat(measurement[4:7])
-    H_t[8:10,14:16] = Q'
+    Q = rot_mat_from_quat(x_pred[4:7])
+    
+    # update measurement jacobian with effect wind has on velocity
+    A,B = KF_dynamics_jacobians(x_pred,u,dt)
+    H_t[8:10,14:16] = A[8:10,14:16]
     
     K = Σ_pred*H_t'*inv(H_t*Σ_pred*H_t' + Q_t)
     
-    println("Update: ", K * (measurement - x_pred))
     # measurement is true state, skip 
     x_corrected = x_pred + K * (measurement - x_pred)
     

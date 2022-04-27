@@ -239,7 +239,9 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_line
         x_pred, Σ_pred = EKF_predict(X_KF[k], U[k], Σ, dt)
         X_true[k+1] = rk4(X_true[k], U[k], dt, wind=wind_disturbance)
         
-        X_KF[k+1], Σ = EKF_correct(x_pred, X_true[k+1], Σ_pred, dt)
+        X_KF[k+1], Σ = EKF_correct(x_pred, U[k], X_true[k+1], Σ_pred, dt)
+        
+        println("wind est: ", X_KF[k+1][14:end])
     end
     
     tend = time_ns()

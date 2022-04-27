@@ -77,7 +77,7 @@ function KF_dynamics_model(x,u)
     q = x[4:7]
     v_B = x[8:10]
     ω_B = x[11:13]
-    wind = x[14:16] # unused in this func
+    wind = x[14:16]
     
     Q = rot_mat_from_quat(q)
     
@@ -153,8 +153,8 @@ end
 
 function KF_dynamics_jacobians(x,u,dt)
     # returns the discrete time dynamics jacobians using state wind estimate
-    A = FD.jacobian(_x -> rk4(_x,u,dt),x)
-    B = FD.jacobian(_u -> rk4(x,_u,dt),u)
+    A = FD.jacobian(_x -> KF_rk4(_x,u,dt),x)
+    B = FD.jacobian(_u -> KF_rk4(x,_u,dt),u)
     return A,B
 end
  
