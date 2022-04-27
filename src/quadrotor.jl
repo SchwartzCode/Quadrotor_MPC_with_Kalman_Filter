@@ -221,19 +221,30 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_line
     
     times = range(0, tf, step=dt)
     N = length(times)
-    X = [@SVector zeros(n) for k = 1:N] 
+    X_KF = [@SVector zeros(n) for k = 1:N] 
+    X_true = [@SVector zeros(n) for k = 1:N] # note: X_true does not have wind in the states, just result of applying wind
     U = [@SVector zeros(m) for k = 1:N-1]
-    X[1] = x0
+    X_true[1] = x0
+    X_KF[1] = x0
+    Σ = 0.1*I(n) # TODO: tune this
 
     tstart = time_ns()
 
+    println("Beginning simulation...")
+    
     for k = 1:N-1
-        U[k] = get_control(ctrl, A, B, X[k], times[k], relinearize=online_linearization)
-        X[k+1] = rk4(X[k], U[k], dt, wind=wind_disturbance)
+        println(k)
+        
+        U[k] = get_control(ctrl, A, B, X_KF[k], times[k], relinearize=online_linearization)
+        x_pred, Σ_pred = EKF_predict(X_KF[k], U[k], Σ, dt)
+        X_true[k+1] = rk4(X_true[k], U[k], dt, wind=wind_disturbance)
+        
+        X_KF[k+1], Σ = EKF_correct(x_pred, X_true[k+1], Σ_pred, dt)
     end
+    
     tend = time_ns()
     rate = N / (tend - tstart) * 1e9
     println("Controller ran at $rate Hz")
-    return X,U,times
+    return X_true, X_KF, U, times
 end
 

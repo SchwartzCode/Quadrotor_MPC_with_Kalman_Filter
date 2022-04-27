@@ -55,14 +55,13 @@ function dynamics(x,u,wind_disturbance)
     last_x = ẋ[:,1]
     
     if wind_disturbance
-        # apply wind disturbance to state
-        simulate_random_walk_wind_traj(wd)
         # multiply by Q' to move wind into body frame (velocity state is in body frame)
         wind = Q'*RotMatrix{3}(RotZ(wd)) * unit_vec
         
-        last_x[8] +=  Fwind[1]/mass 
-        last_x[9] +=  Fwind[2]/mass 
-        last_x[10] +=  Fwind[3]/mass 
+        last_x[8] +=  wind[1]/mass 
+        last_x[9] +=  wind[2]/mass 
+        last_x[10] +=  wind[3]/mass 
+        
     end
     return last_x
 end
@@ -111,6 +110,11 @@ Integrates the dynamics ODE 1 dt forward, x_{k+1} = rk4(x_k,u_k,dt).
 returns x_{k+1}
 """
 function rk4(x,u,dt; wind=false)
+    if wind
+        # apply wind disturbance to state
+        simulate_random_walk_wind_traj(wd)
+    end
+    
     # rk4 for integration
     k1 = dt*dynamics(x,u, wind)
     k2 = dt*dynamics(x + k1/2,u, wind)
