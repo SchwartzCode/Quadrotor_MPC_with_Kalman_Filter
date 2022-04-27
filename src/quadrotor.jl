@@ -100,43 +100,46 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
                   #x  y    z  w  x  y  z  vx   vy                vz ωx ωy ωz        
     x0 = @SVector [0, -3, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
     xf = @SVector [0, 0,  1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
+    
     X1 = altro_reference(N_pre_flip, dt, model, x0, xf)
-
-    quad = ρ([tan.(pi/2/2), 0, 0])
+    println(X1[end])
+    quad = ρ([tan.(2*pi/3/2), 0, 0])
     Q = rot_mat_from_quat(quad)
-    vels = Q * [0, 0, 2.0/(N_flip*dt)]
+    vels = Q * [0, 2.0/(N_flip*dt), 0]
     #fly to pos 1 of flip
                   #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-    x0 = X1[end]
-    xf = @SVector [0, 3, 3, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0]
+#     x0 = X1[end]
+    x0=xf
+    xf = @SVector [0, 0.866, 3.5, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0]
     X2 = altro_reference(N_flip, dt, model, x0, xf)
-    first_angle = ρ([tan.(pi/2), 0, 0])
 
 #     #fly to top of flip  
-    quad =  ρ([tan.(pi/2), 0, 0])
-    Q = rot_mat_from_quat(quad)
-    vels = Q * [0, 0, 2.0/(N_flip*dt)]
+#     quad =  ρ([tan.(pi/2), 0, 0])
+#     Q = rot_mat_from_quat(quad)
+#     vels = Q * [0, 0, 2.0/(N_flip*dt)]
                   #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-    x0 = X2[end]
-    xf = @SVector [0, 0, 6, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
-    X3 = altro_reference(N_flip, dt, model, x0, xf)
+#     x0 = X2[end]
+#     x0=xf
+#     xf = @SVector [0, 0, 6, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
+#     X3 = altro_reference(N_flip, dt, model, x0, xf)
 
    #fly to pos2 of flip    
-    quad = ρ([tan.(3*pi/2), 0, 0])
+    quad = ρ([tan.(4*pi/3/2), 0, 0])
     Q = rot_mat_from_quat(quad)
-    vels = Q * [0, 0,-2.0/(N_flip*dt)]
+    vels = Q * [0, 2.0/(N_flip*dt), 0]
                   #x   y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-    x0 = X3[end]
-    xf = @SVector [0, -3, 3,quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
+#     x0 = X3[end]
+    x0=xf
+    xf = @SVector [0, -0.866, 3.5,quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
     X4 = altro_reference(N_flip, dt, model, x0, xf)
-    first_angle = ρ([tan.(pi), 0, 0])
 
     #fly to end of flip    
     quad = ρ([tan.(pi), 0, 0])
     Q = rot_mat_from_quat(quad)
-    vels = Q * [0, 0,-2.0/(N_flip*dt)]
+    vels = Q * [0, 2.0/(N_flip*dt), 0]
                   #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-    x0 = X4[end]
+#     x0 = X4[end]
+    x0=xf
     xf = @SVector [0, 0, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
     X5 = altro_reference(N_flip, dt, model, x0, xf)
     
@@ -145,16 +148,13 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
     Q = rot_mat_from_quat(quad)
     vels = Q * [0, 2.0/(N_post_flip*dt),0]
                   #x  y   z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-    x0 = X5[end] 
+#     x0 = X5[end]
+    x0=xf
     xf = @SVector [0, 3, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
     X6 = altro_reference(N_post_flip, dt, model, x0, xf)
-    X = vcat(X1, X2, X3, X4, X5, X6)
+    X = vcat(X1, X2, X4, X5, X6)
 
     return X
-    
-#                   #x  y   z    w  x  y  z  xv          vy          vz          ωx ωy ωz        
-#     x0 = @SVector [0, -1, 0.5, 1, 0, 0, 0, 2.0/(N*dt), 2.0/(N*dt), 2.0/(N*dt), 0, 0, 0] 
-#     xf = @SVector [2, 1,  2.5, 1, 0, 0, 0, 2.0/(N*dt), 2.0/(N*dt), 2.0/(N*dt), 0, 0, 0] 
 end
     
  
@@ -162,10 +162,7 @@ function altro_reference(N::Int64, dt::Float64, model, x0, xf)
     n,m = RobotDynamics.dims(model)
     Q = 1.0*Diagonal(@SVector ones(n))
     Qf = 1.0*Diagonal(@SVector ones(n))
-    R = 100.0*Diagonal(@SVector ones(m))
-#     Q = 1.0e-2*Diagonal(@SVector ones(n)) * dt
-#     Qf = 100.0*Diagonal(@SVector ones(n))
-#     R = 1.0e-1*Diagonal(@SVector ones(m)) * dt
+    R = 10.0*Diagonal(@SVector ones(m))
     # Set up
     obj = LQRObjective(Q,R,Qf,xf,N)
     # Add constraints
