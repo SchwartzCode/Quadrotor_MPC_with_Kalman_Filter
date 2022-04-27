@@ -259,3 +259,28 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
     return X,U,times
 end
 
+function simulate_with_wind(model::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
+    
+    wind = [1,1, 1]*1.0 # wind direction
+    wd = 0 # mean on wind angle
+   
+    n,m = size(model)
+    times = range(0, tf, step=dt)
+    N = length(times)
+    X = [@SVector zeros(n) for k = 1:N] 
+    U = [@SVector zeros(m) for k = 1:N-1]
+    X[1] = x0
+
+    tstart = time_ns()
+
+    for k = 1:N-1
+        U[k] = get_control(ctrl, A, B, X[k], times[k])
+        X[k+1] = rk4(X[k], U[k], dt)
+        
+    end
+    tend = time_ns()
+    rate = N / (tend - tstart) * 1e9
+    println("Controller ran at $rate Hz")
+    return X,U,times
+end
+
