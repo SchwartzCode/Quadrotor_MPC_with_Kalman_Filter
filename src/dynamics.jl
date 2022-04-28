@@ -14,9 +14,6 @@ k_m = 1.0 #0.1 # [N*m/rpm]
          [-ℓ*k_T 0 ℓ*k_T 0]
          [k_m -k_m k_m -k_m]]
 
-unit_vec = [1,1, 1]*1.0 # wind direction
-wd = 0 # mean on wind angle
-
 """
 Calculate the continuous time dynamics ẋ = f(x,u), x is a vector of length 6, u is a vector of length 2.
 param - x <13 elem vector>: [pos (world frame),
@@ -31,7 +28,7 @@ NOTE:
 ANY CHANGES MADE TO THIS FUNCTION ALSO NEED TO BE MADE TO KF_dynamics_model()
 IF THE KALMAN FILTER IS TO WORK
 """
-function dynamics(x,u,wind_disturbance)
+function dynamics(x,u,wind)
     # 3D quadrotor dynamics
     
     # unpack state
@@ -43,7 +40,7 @@ function dynamics(x,u,wind_disturbance)
     
     Q = rot_mat_from_quat(q)
     
-    F_B = Q' * [0 0 -mass*g]' + [0 0 sum(k_T * u)]'
+    F_B = Q' * ([0 0 -mass*g]' + wind) + [0 0 sum(k_T * u)]'
     τ_B = τ_mat * u
     
     # see main_script.ipynb for formal dynamics definition
@@ -51,19 +48,9 @@ function dynamics(x,u,wind_disturbance)
              0.5*quat_L(q)*quat_H*ω_B,
              1/mass * F_B - cross(ω_B, v_B),
              inv(J)*(τ_B - cross(ω_B, J*ω_B)),
-             zeros(3)) # wind estimate is updated by Kalman filter; not here in dynamics
-    last_x = ẋ[:,1]
+             zeros(3)) # wind estimate is updated by Kalman filter; not here in dynamics    
     
-    if wind_disturbance
-        # multiply by Q' to move wind into body frame (velocity state is in body frame)
-        wind = Q'*RotMatrix{3}(RotZ(wd)) * unit_vec
-        
-        last_x[8] +=  wind[1]/mass 
-        last_x[9] +=  wind[2]/mass 
-        last_x[10] +=  wind[3]/mass 
-        
-    end
-    return last_x
+    return ẋ[:,1]
 end
 
 """
@@ -94,26 +81,44 @@ function KF_dynamics_model(x,u)
     return ẋ[:,1]
 end
 
-function simulate_random_walk_wind_traj(wd,move=1)
+function simulate_random_walk_wind_traj!(wind,move=0.1)
     rand_num = Random.randn(1)[1]
     if rand_num > 0.5
-        wd += move
+        wind .= RotMatrix{3}(RotZ(move)) * wind
     else
-        wd -= move
+        wind .= RotMatrix{3}(RotZ(-move)) * wind
     end
     
 end   
+
+function get_wind_correction(x,B)
+    # unpack state
+    r = x[1:3]
+    q = x[4:7]
+    v_B = x[8:10]
+    ω_B = x[11:13]
+    wind = x[14:16]
+    
+    Q = rot_mat_from_quat(q)
+    F_wind = Q' * wind # body frame
+    
+    A,B = 
+    dv_du = B[8:10,:] # 3x4
+    
+    thrust_correction = dv_du \ -F_wind
+    
+#     println("wind force: ", wind)
+#     println("thrust corr: ", thrust_correction)
+    
+    return thrust_correction
+end
 
 """
 Integrates the dynamics ODE 1 dt forward, x_{k+1} = rk4(x_k,u_k,dt).
 
 returns x_{k+1}
 """
-function rk4(x,u,dt; wind=false)
-    if wind
-        # apply wind disturbance to state
-        simulate_random_walk_wind_traj(wd)
-    end
+function rk4(x,u,dt,wind)
     
     # rk4 for integration
     k1 = dt*dynamics(x,u, wind)
@@ -128,10 +133,10 @@ uses forward diff to get the following jacobians of the above discrete dynamics 
 drk4/dx = A 
 drk4/du = B
 """
-function dynamics_jacobians(x,u,dt)
+function dynamics_jacobians(x,u,dt,wind=[0.0, 0.0, 0.0])
     # returns the discrete time dynamics jacobians
-    A = FD.jacobian(_x -> rk4(_x,u,dt),x)
-    B = FD.jacobian(_u -> rk4(x,_u,dt),u)
+    A = FD.jacobian(_x -> rk4(_x,u,dt,wind),x)
+    B = FD.jacobian(_u -> rk4(x,_u,dt,wind),u)
     return A,B
 end
 
@@ -141,7 +146,7 @@ Integrates the dynamics ODE 1 dt forward, x_{k+1} = rk4(x_k,u_k,dt).
 
 returns x_{k+1}
 """
-function KF_rk4(x,u,dt; wind=false)
+function KF_rk4(x,u,dt)
     # rk4 for integration
     k1 = dt*KF_dynamics_model(x,u)
     k2 = dt*KF_dynamics_model(x + k1/2,u)
