@@ -102,7 +102,6 @@ function get_wind_correction(x,B)
     Q = rot_mat_from_quat(q)
     F_wind = Q' * wind # body frame
     
-    A,B = 
     dv_du = B[8:10,:] # 3x4
     
     thrust_correction = dv_du \ -F_wind

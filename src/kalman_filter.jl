@@ -54,7 +54,9 @@ function EKF_correct(x_pred, u, measurement, Σ_pred, dt)
     diff = (measurement - x_pred)
 #     diff = setindex(diff, 4, 0.0)
 #     diff[4:7] = zeros(4)#0.0
-        wind_update = x_pred[2:end] + K * err #FIXME: dirty
+    update = K * err
+    
+    wind_update = x_pred[2:end] + K * err #FIXME: dirty
     println(norm(K[14:end,:]))
     x_corrected = vcat([measurement[1:13]' wind_update[13:15]'])'[:,1]
     
@@ -62,6 +64,10 @@ function EKF_correct(x_pred, u, measurement, Σ_pred, dt)
     
     return x_corrected, Σ_corrected
 end
+
+# function apply_EKF_state_update(prediction, update)
+    
+# end
 
 """
 difference between state but converts quaternions to 3 param
