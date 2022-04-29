@@ -67,17 +67,17 @@ end
 
 """
 Returns: full attitude Jacobian matrix (i.e. padded with I to account
-    for other state variables)
+    for other state variables):
+       | I        |
+       |   G(Q)   |
+       |        I |
 Params
     x: 13-dim state vector (r, q, v_B, ω_B)
 """
 function attitude_jacobian(x)
+    x_size = length(x)
+    
     Q = x[4:7]
     
-    # old impl for (r, q) state:
-    # I            zeros(3,3)
-    # zeros(4,3)   G(Q) -> (4,3)
-#     return [I zeros(3,3); zeros(4,3) G(Q)]
-    
-    return [I zeros(3,9); zeros(4,3) G(Q) zeros(4,6); zeros(6,6) I]
+    return [I zeros(3,x_size-4); zeros(4,3) G(Q) zeros(4,x_size-7); zeros(x_size-7,x_size-10) I]
 end

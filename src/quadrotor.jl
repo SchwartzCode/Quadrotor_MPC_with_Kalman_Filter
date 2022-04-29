@@ -31,7 +31,8 @@ end
 function visualize!(vis, model, tf::Real, X)
     fps = Int(round((length(X)-1)/tf))
     anim = MeshCat.Animation(fps)
-    n = state_dim(model)
+    n = length(X[1])
+    
     for (k,x) in enumerate(X)
         atframe(anim, k) do
             x = X[k]
@@ -69,9 +70,10 @@ function line_reference(N::Int64, dt::Float64)
     ωx_ref = Array(zeros(N))
     ωy_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
+    wind_ests = Array(zeros(N,3))
     
-    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vx_ref'; vy_ref'; vz_ref'; ωx_ref'; ωy_ref'; ωz_ref'] 
-    return [SVector{13}(x) for x in eachcol(xref)]
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vx_ref'; vy_ref'; vz_ref'; ωx_ref'; ωy_ref'; ωz_ref'; wind_ests'] 
+    return [SVector{16}(x) for x in eachcol(xref)]
 end
 
 function circle_trajectory(z,r)
@@ -140,6 +142,7 @@ function flip_reference(N::Int64, dt::Float64)
     ωx_ref = [zeros(N_pre_flip); ωx_flip; zeros(N_post_flip)]
     ωy_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
+    wind_ests = Array(zeros(N,3))
     
     vels = [vx_ref'; vy_ref'; vz_ref']
     
@@ -148,8 +151,8 @@ function flip_reference(N::Int64, dt::Float64)
         vels[:,i] = Q * vels[:,i]
     end
     
-    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'] 
-    return [SVector{13}(x) for x in eachcol(xref)]
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'; wind_ests'] 
+    return [SVector{16}(x) for x in eachcol(xref)]
 end
 
 
@@ -159,7 +162,7 @@ params
 N  - number of time steps
 dt - size of time steps
 """
-function other_flip_reference(N::Int64, dt::Float64)
+function simple_flip_reference(N::Int64, dt::Float64)
     # TODO: make pre and post flip N the same and add a tail to traj
     N_pre_flip = Int(floor(N / 4))
     N_flip = Int(floor(N / 2))
@@ -169,13 +172,10 @@ function other_flip_reference(N::Int64, dt::Float64)
     
     # trapezoidal vels for y pos/vel components
     py_1, vy_1 = trapezoidal_vel(N_pre_flip, dt, -3, 0)
-#     py_1 = py_1 .- 3
     py_2, vy_2 = trapezoidal_vel(N_post_flip, dt, 0, 3)
     
     # trapezoidal vels for z pos/vel components
     pz_1, vz_1 = trapezoidal_vel(half_N_flip, dt, 1, 3)
-#     pz_2, vz_2 = trapezoidal_vel(half_N_flip, dt, 3, 1)
-#     pz_1 .+ 1.0
     pz_2 = reverse(pz_1)
     vz_2 = -vz_1
     
@@ -187,7 +187,6 @@ function other_flip_reference(N::Int64, dt::Float64)
     quat_ref = hcat(ones(N), zeros(N), zeros(N), zeros(N))
     
     # do full rotation about y axis
-#     angs = collect(LinRange(0, 2*pi, N_flip))
     angs, ωx_flip = trapezoidal_vel(N_flip, dt, 0, 2*pi)
     flip_angles = [tan.(angs/2) zeros(N_flip) zeros(N_flip)]
     
@@ -201,6 +200,7 @@ function other_flip_reference(N::Int64, dt::Float64)
     ωx_ref = [zeros(N_pre_flip); ωx_flip; zeros(N_post_flip)]
     ωy_ref = Array(zeros(N))
     ωz_ref = Array(zeros(N))
+    wind_ests = Array(zeros(N,3))
     
     vels = [vx_ref'; vy_ref'; vz_ref']
     
@@ -209,53 +209,55 @@ function other_flip_reference(N::Int64, dt::Float64)
         vels[:,i] = Q * vels[:,i]
     end
     
-    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'] 
-    return [SVector{13}(x) for x in eachcol(xref)]
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'; wind_ests'] 
+    return [SVector{16}(x) for x in eachcol(xref)]
 end
 
-function RobotDynamics.discrete_jacobian!(::Type{Q}, ∇f, model::AbstractModel,
-        x, u, t, dt) where {Q<:RobotDynamics.Explicit}
-    z = KnotPoint(x, u, dt, t)
-    RobotDynamics.discrete_jacobian!(Q, ∇f, model, z)
-end
 
-struct WindyQuad <: AbstractModel
-    quad::Quadrotor
-    dir::MVector{2,Float64}   # wind direction
-    wd::Float64               # std on wind angle
-    wm::Float64               # std on wind magnitude
-end
+function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_linearization=false, wind_disturbance=true, kwargs...)
 
-# TODO @Corinne - will need to change this struct to be 3D
-function WindyQuad(quad::Quadrotor;
-        wind = [1,1]*1.0,
-        wd = deg2rad(10),
-        wm = 0.01,
-    )
-    WindyQuad(quad, SA_F64[wind[1], wind[2]], Float64(wd), Float64(wm)) 
-end
-RobotDynamics.state_dim(model::WindyQuad) = state_dim(model.quad)
-RobotDynamics.control_dim(model::WindyQuad) = control_dim(model.quad)
-
-function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, kwargs...)
-    model = WindyQuad(quad; kwargs...)
-
-    n,m = size(model)
+    n = length(x0)
+    m = size(B[1])[2]
+    
     times = range(0, tf, step=dt)
     N = length(times)
-    X = [@SVector zeros(n) for k = 1:N] 
+    X_KF = [@SVector zeros(n) for k = 1:N] 
+    X_true = [@SVector zeros(n) for k = 1:N] # note: X_true does not have wind in the states, just result of applying wind
     U = [@SVector zeros(m) for k = 1:N-1]
-    X[1] = x0
+    X_true[1] = x0
+    X_KF[1] = x0
+    Σ = 0.05*I(n-1) # TODO: tune this
 
     tstart = time_ns()
 
-    for k = 1:N-1
-        U[k] = get_control(ctrl, A, B, X[k], times[k])
-        X[k+1] = rk4(X[k], U[k], dt)
+    println("Beginning simulation...")
+    
+    wind = zeros(3)
+    if wind_disturbance
+        wind = ones(3)*1.0
     end
+    
+    wind_hist = zeros(N-1,3)
+    
+    for k = 1:N-1
+        println(k)
+        
+        wind_hist[k,:] .= wind
+        
+        U[k] = get_control(ctrl, A, B, X_KF[k], times[k], relinearize=online_linearization)
+        x_pred, Σ_pred = EKF_predict(X_KF[k], U[k], Σ, dt)
+#         println("passing in ", wind)
+        X_true[k+1] = rk4(X_true[k], U[k], dt, wind)
+        
+        X_KF[k+1], Σ = EKF_correct(x_pred, U[k], X_true[k+1], Σ_pred, dt)
+        Σ *= 5 # TODO: why is this necessary?
+        
+        simulate_random_walk_wind_traj!(wind)
+    end
+    
     tend = time_ns()
     rate = N / (tend - tstart) * 1e9
     println("Controller ran at $rate Hz")
-    return X,U,times
+    return X_true, X_KF, U, times, wind_hist
 end
 
