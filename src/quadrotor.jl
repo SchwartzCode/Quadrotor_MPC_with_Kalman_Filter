@@ -3,17 +3,6 @@ using RobotZoo: Quadrotor, PlanarQuadrotor
 using CoordinateTransformations, Rotations, Colors, StaticArrays, RobotDynamics
 using Random
 
-# struct Wind_Struct
-#     wd::Float64  # mean on wind angle
-#     wm::Float64 #mean on wind magnitude
-#     wind_dir::MVector{3,Float64} # wind direction
-#     wind_hist::Matrix{Float64} #tracks history of wind for plotting
-#     wind_type::Bool #keeps track of which version of wind to use(double or single)
-#     wind_disturbance::Bool #Should we use wind
-# end
-
-
-
 function set_mesh!(vis, model::L;
         scaling=1.0, color=colorant"black"
     ) where {L <: Union{Quadrotor, PlanarQuadrotor}} 
