@@ -21,6 +21,27 @@ function plot_vals(X_ref, X_act, indices, labels, plot_title="title")
     end
     
     plot(tref, vals_ref, line=:dash, label=ref_labels, title=plot_title,
-        xlabel="Time [sec]", ylabel="Position [m]")
+        xlabel="Time [sec]", ylabel="Value")
     plot!(tref, vals_act, label=act_labels)
+end
+
+
+function plot_wind_tracking(X_KF, wind_vals, plot_title="Wind Force Estimation")
+    N = length(wind_hist[:,1])
+    
+    # extract values to plot from given matrices
+    vals_est = zeros(N,3)
+    vals_est[1,:] .= X_KF[1][14:16]
+    
+    for k = 1:N-1
+        vals_est[k+1,:] .= X_KF[k+1][14:16]
+    end
+    
+    # initialize label mats and populate (there's probably a better way to do this)
+    est_labels = ["wind_x est" "wind_y est" "wind_z est"]
+    gt_labels = ["wind_x actual" "wind_y actual" "wind_z actual"]
+    
+    plot(tref, wind_hist, line=:dash, label=gt_labels, title=plot_title,
+        xlabel="Time [sec]", ylabel="Force [N]", legend=:bottomleft)
+    plot!(tref, vals_est, label=est_labels)
 end

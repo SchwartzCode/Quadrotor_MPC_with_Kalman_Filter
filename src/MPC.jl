@@ -130,7 +130,7 @@ Get the control from the MPC solver by solving the QP.
 If you want to use your own QP solver, you'll need to change this
 method.
 """
-function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time)
+function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; relinearize=true)
     
     # Update the QP
     updateQP!(ctrl, A_traj, B_traj, x, time)
@@ -142,35 +142,35 @@ function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time)
     
     k = get_k(ctrl, time)
     
-    println(k)
+    A,B = KF_dynamics_jacobians(x, ctrl.Uref[k] + Δu, dt)
+    du_wind = get_wind_correction(x, B) #note: this function is in dynamics.jl
     
-    U_future = []
-    for i=0:ctrl.Nmpc-2
-        if i+k > length(ctrl.Xref)
-            break
-        else
-            # rollout trajectory and update 
-            u_updated = ctrl.Uref[k+i] + results.x[(1:4) .+ (length(x)-1+4)*(i)]
-            Ai, Bi = dynamics_jacobians(x,u_updated,dt)
-            J_attitude = attitude_jacobian(x)
-            A_traj[k+i] = J_attitude' * Ai * J_attitude
-            B_traj[k+i] = J_attitude' * Bi
-            x = rk4(x, u_updated, dt)
+    if relinearize
+        # NOTE: this should not be used, leaving it for now
+
+        U_future = []
+        for i=0:ctrl.Nmpc-2
+            if i+k > length(ctrl.Xref)
+                break
+            else
+                # rollout trajectory and update 
+                u_updated = ctrl.Uref[k+i] + results.x[(1:4) .+ (length(x)-1+4)*(i)]
+                Ai, Bi = dynamics_jacobians(x,u_updated,dt)
+                J_attitude = attitude_jacobian(x)
+                A_traj[k+i] = J_attitude' * Ai * J_attitude
+                B_traj[k+i] = J_attitude' * Bi
+                x = rk4(x, u_updated, dt)
+            end
         end
     end
     
-    return ctrl.Uref[k] + Δu
+    u_corrected = ctrl.Uref[k] + Δu #+ du_wind
+#     clamp!(u_corrected, ctrl.Uref[1][1]-2.0, ctrl.Uref[1][1]+15.0)
     
-#     updating Uref every solve
-#     for i=0:ctrl.Nmpc-2
-#         if i+k > length(ctrl.Xref)
-#             continue
-#         else
-#             ctrl.Uref[k+i] += results.x[(1:4) .+ (length(x)-1+4)*(i)]
-#         end
-#     end
+#     println("u corrected: ", u_corrected)
     
-#     return ctrl.Uref[k]
+    return u_corrected
+    
 end
 
 
@@ -267,6 +267,7 @@ function updateQP_constrained!(ctrl::MPCController, A, B, x, time)
     k = get_k(ctrl, time)
     x_size = size(ctrl.Xref[1])[1] - 1
     u_size = size(ctrl.Uref[1])[1]
+    N = ctrl.Nmpc
     
     # TODO: define these not in place
     xeq = ctrl.Xref[end]
@@ -280,16 +281,18 @@ function updateQP_constrained!(ctrl::MPCController, A, B, x, time)
     dϕ = ϕ(quat_L(ctrl.Xref[k][4:7])' * x[4:7])
     dX = vcat([(x - ctrl.Xref[k])[1:3]' dϕ' (x - ctrl.Xref[k])[8:end]'])'
             
-    A_o, B_o = dynamics_jacobians(x,Uref[k],dt)
-    J_attitude = attitude_jacobian(x)
-    A_o = J_attitude'*A_o*J_attitude
-    B_o = J_attitude'*B_o
+#     A_o, B_o = dynamics_jacobians(x,Uref[k],dt)
+#     J_attitude = attitude_jacobian(x)
+#     A_o = J_attitude'*A_o*J_attitude
+#     B_o = J_attitude'*B_o
     
-    state_bounds[begin:size(A[k])[1]] = -A_o*dX
+    state_bounds[begin:size(A[k])[1]] = -A[k]*dX
     
-    # TODO: move this to build
-    thrust_ub = 10.0 * ones(ctrl.Nmpc-1)
-    thrust_lb = -5.0 * ones(ctrl.Nmpc-1)
+    # TODO: update along Uref if not all uhover
+    thrust_ub = (15.0-Uref[1][1]) * ones(ctrl.Nmpc-1)
+    thrust_lb = (-2.0-Uref[1][1]) * ones(ctrl.Nmpc-1)
+#     thrust_ub = 50000 * ones(ctrl.Nmpc-1)
+#     thrust_lb = -20000 * ones(ctrl.Nmpc-1)
     
     ub = [state_bounds; thrust_ub; thrust_ub; thrust_ub; thrust_ub]
     lb = [state_bounds; thrust_lb; thrust_lb; thrust_lb; thrust_lb]
@@ -297,12 +300,11 @@ function updateQP_constrained!(ctrl::MPCController, A, B, x, time)
     ctrl.ub .= ub
     ctrl.lb .= lb
     
-    N = ctrl.Nmpc
     P_rows = (N-1)*(u_size + x_size)
     P_cols = (N-1)*(u_size + x_size)
                 
     # Update jacobians in ctrl.A
-    ctrl.A[1:x_size, :] .= [B_o -I(x_size) zeros(x_size, P_cols - u_size - x_size)]
+    ctrl.A[1:x_size, :] .= [B[k] -I(x_size) zeros(x_size, P_cols - u_size - x_size)]
     
     curr_pos = u_size
     
@@ -328,8 +330,11 @@ Create MPC object and solve
 """
 function build_MPC_QP(Xref, Uref, tref, A, B, Q, R, Qf)
     # Initialize the constrained MPC controller
-    Nd = (Nmpc-1)*(n-1+m)
-    mpc = OSQPController(n-1, m, Nmpc, length(Xref), Nd)
+    n = size(B[1])[1]
+    m = size(B[1])[2]
+
+    Nd = (Nmpc-1)*(n+m)
+    mpc = OSQPController(n, m, Nmpc, length(Xref), Nd)
     mpc.Xref .= Xref
     mpc.Uref .= Uref
     mpc.times .= tref
