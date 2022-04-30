@@ -87,74 +87,154 @@ function altro_reference_line(N::Int64, dt::Float64, model)
     return X
 end
 function altro_reference_circle(N::Int64, dt::Float64, model)
-    N_pre_flip = Int(floor(N / 4))
-    N_flip = Int(floor(N / 2 /4))
-    N_post_flip = Int(ceil(N / 4))
-    N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
-   
-    # Define initial and final conditions
-    #fly to position to start flip
-    quad =[1, 0, 0, 0]
-    Q = rot_mat_from_quat([1, 0, 0, 0])
-    vels =   Q * [0, 2.0/(N_pre_flip*dt), 0]
-                  #x  y    z  w  x  y  z  vx   vy                vz ωx ωy ωz        
-    x0 = @SVector [0, -3, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
-    xf = @SVector [0, 0,  1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
     
-    X1 = altro_reference(N_pre_flip, dt, model, x0, xf)
-    println(X1[end])
-    quad = ρ([tan.(2*pi/3/2), 0, 0])
-    Q = rot_mat_from_quat(quad)
-    vels = Q * [0, 2.0/(N_flip*dt), 0]
-    #fly to pos 1 of flip
-                  #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-#     x0 = X1[end]
-    x0=xf
-    xf = @SVector [0, 0.866, 3.5, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0]
-    X2 = altro_reference(N_flip, dt, model, x0, xf)
+    n,m = RobotDynamics.dims(model)
 
-#     #fly to top of flip  
-#     quad =  ρ([tan.(pi/2), 0, 0])
-#     Q = rot_mat_from_quat(quad)
-#     vels = Q * [0, 0, 2.0/(N_flip*dt)]
-                  #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-#     x0 = X2[end]
-#     x0=xf
-#     xf = @SVector [0, 0, 6, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
-#     X3 = altro_reference(N_flip, dt, model, x0, xf)
-
-   #fly to pos2 of flip    
-    quad = ρ([tan.(4*pi/3/2), 0, 0])
-    Q = rot_mat_from_quat(quad)
-    vels = Q * [0, 2.0/(N_flip*dt), 0]
-                  #x   y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-#     x0 = X3[end]
-    x0=xf
-    xf = @SVector [0, -0.866, 3.5,quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
-    X4 = altro_reference(N_flip, dt, model, x0, xf)
-
-    #fly to end of flip    
-    quad = ρ([tan.(pi), 0, 0])
-    Q = rot_mat_from_quat(quad)
-    vels = Q * [0, 2.0/(N_flip*dt), 0]
-                  #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-#     x0 = X4[end]
-    x0=xf
-    xf = @SVector [0, 0, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
-    X5 = altro_reference(N_flip, dt, model, x0, xf)
+    x0_pos = SA[0, -10, 1.]
+    xf_pos = SA[0, +10, 1.]
     
-    #fly to goal
-    quad =[1,0,0,0]
-    Q = rot_mat_from_quat(quad)
-    vels = Q * [0, 2.0/(N_post_flip*dt),0]
-                  #x  y   z  w  x  y  z  vx  vy        vz ωx ωy ωz        
-#     x0 = X5[end]
-    x0=xf
-    xf = @SVector [0, 3, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
-    X6 = altro_reference(N_post_flip, dt, model, x0, xf)
-    X = vcat(X1, X2, X4, X5, X6)
+    x0 = RobotDynamics.build_state(model, x0_pos, UnitQuaternion(I), zeros(3), zeros(3))
+    xf = RobotDynamics.build_state(model, xf_pos, UnitQuaternion(I), zeros(3), zeros(3));
 
+
+        # Set up waypoints
+    wpts = [SA[+10, 0, 1.],
+            SA[-10, 0, 1.],
+            xf_pos]
+    times = [33, 66, 101]   # in knot points
+
+    # Set up nominal costs
+    Q = Diagonal(RobotDynamics.fill_state(model, 1e-5, 1e-5, 1e-3, 1e-3))
+    R = Diagonal(@SVector fill(1e-4, 4))
+    q_nom = UnitQuaternion(I)
+    v_nom = zeros(3)
+    ω_nom = zeros(3)
+    x_nom = RobotDynamics.build_state(model, zeros(3), q_nom, v_nom, ω_nom)
+    cost_nom = LQRCost(Q, R, x_nom)
+
+    # Set up waypoint costs
+    Qw_diag = RobotDynamics.fill_state(model, 1e3,1,1,1)
+    Qf_diag = RobotDynamics.fill_state(model, 10., 100, 10, 10)
+    costs = map(1:length(wpts)) do i
+        r = wpts[i]
+        xg = RobotDynamics.build_state(model, r, q_nom, v_nom, ω_nom)
+        if times[i] == N
+            Q = Diagonal(Qf_diag)
+        else
+            Q = Diagonal(1e-3*Qw_diag)
+        end
+
+        LQRCost(Q, R, xg)
+    end
+
+    # Build Objective
+    costs_all = map(1:N) do k
+        i = findfirst(x->(x ≥ k), times)
+        if k ∈ times
+            costs[i]
+        else
+            cost_nom
+        end
+    end
+    obj = Objective(costs_all);
+    
+
+    u0 = @SVector fill(0.5*model.mass/m, m)
+    U_hover = [copy(u0) for k = 1:N-1]; # initial hovering control trajectory
+
+
+    conSet = ConstraintList(n,m,N)
+    bnd = BoundConstraint(n,m, u_min=0.0, u_max=12.0)
+    add_constraint!(conSet, bnd, 1:N-1)
+    tf = (N-1)* dt
+
+    prob = Problem(model, obj, x0, tf, xf=xf, constraints=conSet)
+    initial_controls!(prob, U_hover)
+    rollout!(prob);
+
+    opts = SolverOptions(
+        penalty_scaling=100.,
+        penalty_initial=0.1,
+    )
+
+    solver = ALTROSolver(prob, opts);
+    solve!(solver)
+
+    X = states(solver)
+    println(X)
     return X
+#     N_pre_flip = Int(floor(N / 4))
+#     N_flip = Int(floor(N / 2 /4))
+#     N_post_flip = Int(ceil(N / 4))
+#     N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
+   
+#     # Define initial and final conditions
+#     #fly to position to start flip
+#     quad =[1, 0, 0, 0]
+#     Q = rot_mat_from_quat([1, 0, 0, 0])
+#     vels =   Q * [0, 2.0/(N_pre_flip*dt), 0]
+#                   #x  y    z  w  x  y  z  vx   vy                vz ωx ωy ωz        
+#     x0 = @SVector [0, -3, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
+#     xf = @SVector [0, 0,  1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
+    
+#     X1 = altro_reference(N_pre_flip, dt, model, x0, xf)
+#     println(X1[end])
+#     quad = ρ([tan.(2*pi/3/2), 0, 0])
+#     Q = rot_mat_from_quat(quad)
+#     vels = Q * [0, 2.0/(N_flip*dt), 0]
+#     #fly to pos 1 of flip
+#                   #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+# #     x0 = X1[end]
+#     x0=xf
+#     xf = @SVector [0, 0.866, 3.5, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0]
+#     X2 = altro_reference(N_flip, dt, model, x0, xf)
+    
+#     #slurp
+    
+#     #expm exponential map
+
+# #     #fly to top of flip  
+# #     quad =  ρ([tan.(pi/2), 0, 0])
+# #     Q = rot_mat_from_quat(quad)
+# #     vels = Q * [0, 0, 2.0/(N_flip*dt)]
+#                   #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+# #     x0 = X2[end]
+# #     x0=xf
+# #     xf = @SVector [0, 0, 6, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
+# #     X3 = altro_reference(N_flip, dt, model, x0, xf)
+
+#    #fly to pos2 of flip    
+#     quad = ρ([tan.(4*pi/3/2), 0, 0])
+#     Q = rot_mat_from_quat(quad)
+#     vels = Q * [0, 2.0/(N_flip*dt), 0]
+#                   #x   y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+# #     x0 = X3[end]
+#     x0=xf
+#     xf = @SVector [0, -0.866, 3.5,quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
+#     X4 = altro_reference(N_flip, dt, model, x0, xf)
+
+#     #fly to end of flip    
+#     quad = ρ([tan.(pi), 0, 0])
+#     Q = rot_mat_from_quat(quad)
+#     vels = Q * [0, 2.0/(N_flip*dt), 0]
+#                   #x  y  z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+# #     x0 = X4[end]
+#     x0=xf
+#     xf = @SVector [0, 0, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 2.0/(N_flip*dt), 0, 0] 
+#     X5 = altro_reference(N_flip, dt, model, x0, xf)
+    
+#     #fly to goal
+#     quad =[1,0,0,0]
+#     Q = rot_mat_from_quat(quad)
+#     vels = Q * [0, 2.0/(N_post_flip*dt),0]
+#                   #x  y   z  w  x  y  z  vx  vy        vz ωx ωy ωz        
+# #     x0 = X5[end]
+#     x0=xf
+#     xf = @SVector [0, 3, 1, quad[1],quad[2],quad[3],quad[4], vels[1],vels[2], vels[3], 0, 0, 0] 
+#     X6 = altro_reference(N_post_flip, dt, model, x0, xf)
+#     X = vcat(X1, X2, X4, X5, X6)
+
+#     return X
 end
     
  
@@ -164,13 +244,15 @@ function altro_reference(N::Int64, dt::Float64, model, x0, xf)
     Qf = 1.0*Diagonal(@SVector ones(n))
     R = 10.0*Diagonal(@SVector ones(m))
     # Set up
-    obj = LQRObjective(Q,R,Qf,xf,N)
+    cost =  TrajectoryOptimization.QuatLQRCost(Q, R, xf)
+#     obj = LQRObjective(Q,R,Qf,xf,N)
+    obj = Objective(cost);
     # Add constraints
     conSet = ConstraintList(n,m,N)
         
     #TODO: MAKE THIS NOT MAGIC NUMBERS
-    thrust_ub = 50.0
-    thrust_lb = -50.0
+    thrust_ub = 5.0
+    thrust_lb = -5.0
   
     bnd = BoundConstraint(n, m, u_min=thrust_lb, u_max=thrust_ub)
     goal = GoalConstraint(xf)
