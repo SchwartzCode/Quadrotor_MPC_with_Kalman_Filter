@@ -161,7 +161,7 @@ function altro_reference_zigzag(N::Int64, dt::Float64, model)
 
     X = states(solver)
     return X
-    
+end   
 function altro_reference_circle(N::Int64, dt::Float64, model)
 
     N_pre_flip = Int(floor(N / 4))
