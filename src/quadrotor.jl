@@ -161,7 +161,8 @@ function altro_reference_zigzag(N::Int64, dt::Float64, model)
 
     X = states(solver)
     return X
-    
+end
+
 function altro_reference_circle(N::Int64, dt::Float64, model)
 
     N_pre_flip = Int(floor(N / 4))
@@ -245,7 +246,7 @@ function altro_reference(N::Int64, dt::Float64, model, x0, xf)
     Qf = 1.0*Diagonal(@SVector ones(n))
     R = 10.0*Diagonal(@SVector ones(m))
     # Set up
-    cost =  TrajectoryOptimization.QuatLQRCost(Q, R, xf)
+    cost =  QuatLQRCost(Q,R,xf, w=10.0)
 #     obj = LQRObjective(Q,R,Qf,xf,N)
     obj = Objective(cost);
     # Add constraints
