@@ -21,7 +21,7 @@ param - x <13 elem vector>: [pos (world frame),
                              velocity (body frame),
                              angular velocity (body frame)]
 param - u <4 elem vector>: rpm of each motor (see main_script.ipynb for ordering)
-param - wind_distrurbance <boolean>: if true, wind disturbance is added to state derivative
+param - wind_disturbance <boolean>: if true, wind disturbance is added to state derivative
 returns ẋ
 
 NOTE:
@@ -39,8 +39,7 @@ function dynamics(x,u,wind)
 #     wind = x[14:16] # unused in this func
     
     Q = rot_mat_from_quat(q)
-    
-    F_B = Q' * ([0 0 -mass*g]' + wind) + [0 0 sum(k_T * u)]'
+    F_B = Q' * ([0 0 -mass*g]' + reshape(wind.wind_dir, (3,1))) + [0 0 sum(k_T * u)]'
     τ_B = τ_mat * u
     
     # see main_script.ipynb for formal dynamics definition
@@ -81,14 +80,22 @@ function KF_dynamics_model(x,u)
     return ẋ[:,1]
 end
 
-function simulate_random_walk_wind_traj!(wind,move=0.1)
+function simulate_random_walk_wind_traj!(wind, move=0.1)
     rand_num = Random.randn(1)[1]
-    if rand_num > 0.5
-        wind .= RotMatrix{3}(RotZ(move)) * wind
+    if wind.wind_type
+        if rand_num > 0.5
+            wind.wind_dir .= RotMatrix{3}(RotZ(move)) * wind.wind_dir
+        else
+            wind.wind_dir .= RotMatrix{3}(RotZ(-move)) * wind.wind_dir
+        end
     else
-        wind .= RotMatrix{3}(RotZ(-move)) * wind
+        if rand_num < 0.5
+           wind.wd[1] = wind.wd[1] + move
+        else
+           wind.wd[1] = wind.wd[1] - move
+        end
+        wind.wind_dir .= RotMatrix{3}(RotZ(deg2rad(wind.wd[1]))) * wind.wind_dir
     end
-    
 end   
 
 function get_wind_correction(x,B)
@@ -118,7 +125,6 @@ Integrates the dynamics ODE 1 dt forward, x_{k+1} = rk4(x_k,u_k,dt).
 returns x_{k+1}
 """
 function rk4(x,u,dt,wind)
-    
     # rk4 for integration
     k1 = dt*dynamics(x,u, wind)
     k2 = dt*dynamics(x + k1/2,u, wind)
@@ -132,7 +138,7 @@ uses forward diff to get the following jacobians of the above discrete dynamics 
 drk4/dx = A 
 drk4/du = B
 """
-function dynamics_jacobians(x,u,dt,wind=[0.0, 0.0, 0.0])
+function dynamics_jacobians(x,u,dt,wind)
     # returns the discrete time dynamics jacobians
     A = FD.jacobian(_x -> rk4(_x,u,dt,wind),x)
     B = FD.jacobian(_u -> rk4(x,_u,dt,wind),u)

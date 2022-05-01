@@ -3,7 +3,6 @@ using RobotZoo: Quadrotor, PlanarQuadrotor
 using CoordinateTransformations, Rotations, Colors, StaticArrays, RobotDynamics
 using Random
 using TrajectoryOptimization
-# using TrajOptPlots
 using Altro
 
 function set_mesh!(vis, model::L;
@@ -470,17 +469,15 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_line
 
     println("Beginning simulation...")
     
-    wind = zeros(3)
-    if wind_disturbance
-        wind = ones(3)*1.0
+    if wind.wind_disturbance
+        wind.wind_dir .= ones(3)*1.0
     end
     
-    wind_hist = zeros(N-1,3)
     
     for k = 1:N-1
         println(k)
         
-        wind_hist[k,:] .= wind
+        wind.wind_hist[k,:] .= wind.wind_dir
         
         U[k] = get_control(ctrl, A, B, X_KF[k], times[k], relinearize=online_linearization)
         x_pred, Σ_pred = EKF_predict(X_KF[k], U[k], Σ, dt)
@@ -496,6 +493,6 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_line
     tend = time_ns()
     rate = N / (tend - tstart) * 1e9
     println("Controller ran at $rate Hz")
-    return X_true, X_KF, U, times, wind_hist
+    return X_true, X_KF, U, times, wind.wind_hist
 end
 
