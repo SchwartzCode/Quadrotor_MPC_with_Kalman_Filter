@@ -130,7 +130,7 @@ Get the control from the MPC solver by solving the QP.
 If you want to use your own QP solver, you'll need to change this
 method.
 """
-function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; relinearize=true)
+function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; wind_correction=true)
     
     # Update the QP
     updateQP!(ctrl, A_traj, B_traj, x, time)
@@ -141,8 +141,8 @@ function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; r
     Δu = results.x[1:4]
     
     k = get_k(ctrl, time)
-    umax = ctrl.Uref[1][1]+15.0
-    umin = ctrl.Uref[1][1]-2.0
+    umax = 15.0
+    umin = -2.0
     
     u_corrected_pre_wind = ctrl.Uref[k] + Δu
     clamp!(u_corrected_pre_wind, umin, umax)
@@ -152,9 +152,13 @@ function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; r
     
     u_corrected = ctrl.Uref[k] + Δu
     
-    u_corrected += du_wind
+    if wind_correction
+        u_corrected += du_wind
+    end
     
     clamp!(u_corrected, umin, umax)
+    
+    println("wind correction: ", u_corrected - u_corrected_pre_wind)
     
     return u_corrected
     

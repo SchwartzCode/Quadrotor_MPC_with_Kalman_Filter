@@ -26,7 +26,7 @@ function plot_vals(X_ref, X_act, indices, labels, plot_title="title")
 end
 
 
-function plot_wind_tracking(X_KF, wind_vals, plot_title="Wind Force Estimation")
+function plot_wind_tracking(X_KF, wind_vals, plot_title="Wind Torque Estimation")
     N = length(wind_hist[:,1])
     
     # extract values to plot from given matrices
@@ -42,6 +42,6 @@ function plot_wind_tracking(X_KF, wind_vals, plot_title="Wind Force Estimation")
     gt_labels = ["wind_x actual" "wind_y actual" "wind_z actual"]
     
     plot(tref, wind_hist, line=:dash, label=gt_labels, title=plot_title,
-        xlabel="Time [sec]", ylabel="Force [N]", legend=:bottomleft)
+        xlabel="Time [sec]", ylabel="Torque [Nm]", legend=:bottomleft) #, ylims=(-0.1,0.1))
     plot!(tref, vals_est, label=est_labels)
 end

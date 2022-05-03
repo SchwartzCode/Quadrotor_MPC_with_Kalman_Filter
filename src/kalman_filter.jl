@@ -34,7 +34,7 @@ function EKF_correct(x_pred, u, measurement, Σ_pred, dt)
     A,B = KF_dynamics_jacobians(x_pred,u,dt)
     J_att = attitude_jacobian(x_pred)
     A = J_att'*A*J_att
-    H_t[7:9,13:15] .= -A[7:9,13:15]
+    H_t[7:9,13:15] .= -A[10:12,13:15]
 #     println(A[7:9,13:15])
 #     H_t = [zeros(3,7) A[8:10,14:16] zeros(3,6)]
     

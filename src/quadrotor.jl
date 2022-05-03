@@ -454,7 +454,7 @@ function simple_flip_reference(N::Int64, dt::Float64)
 end
 
 
-function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_linearization=false, wind_disturbance=true, kwargs...)
+function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, wind_correction=true, wind_disturbance=true, kwargs...)
 
     n = length(x0)
     m = size(B[1])[2]
@@ -471,8 +471,8 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_line
 
     println("Beginning simulation...")
     
-    if wind.wind_disturbance
-        wind.wind_dir .= ones(3)*0.7
+    if wind_disturbance
+        wind.wind_dir .= ones(3)*1e-2
     end
     
     
@@ -481,7 +481,7 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_line
         
         wind.wind_hist[k,:] .= wind.wind_dir
         
-        U[k] = get_control(ctrl, A, B, X_KF[k], times[k], relinearize=online_linearization)
+        U[k] = get_control(ctrl, A, B, X_KF[k], times[k], wind_correction=wind_correction)
         x_pred, Σ_pred = EKF_predict(X_KF[k], U[k], Σ, dt)
         
         # simulate dynamics and update state estimate with measurement
