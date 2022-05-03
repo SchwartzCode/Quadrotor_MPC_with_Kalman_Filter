@@ -35,7 +35,7 @@ function EKF_correct(x_pred, u, measurement, Σ_pred, dt)
     J_att = attitude_jacobian(x_pred)
     A = J_att'*A*J_att
     H_t[7:9,13:15] .= -A[7:9,13:15]
-    println(A[7:9,13:15])
+#     println(A[7:9,13:15])
 #     H_t = [zeros(3,7) A[8:10,14:16] zeros(3,6)]
     
 #     println(size(H_t))
@@ -57,8 +57,10 @@ function EKF_correct(x_pred, u, measurement, Σ_pred, dt)
     update = K * err
     
     wind_update = x_pred[2:end] + K * err #FIXME: dirty
-    println(norm(K[14:end,:]))
+#     println(norm(K[14:end,:]))
     x_corrected = vcat([measurement[1:13]' wind_update[13:15]'])'[:,1]
+    
+#     x_corrected
     
     Σ_corrected = (I - K*H_t)*Σ_pred + K*Q_t*K'
     

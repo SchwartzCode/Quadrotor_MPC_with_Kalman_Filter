@@ -141,33 +141,20 @@ function get_control(ctrl::MPCController{OSQP.Model}, A_traj, B_traj, x, time; r
     Δu = results.x[1:4]
     
     k = get_k(ctrl, time)
+    umax = ctrl.Uref[1][1]+15.0
+    umin = ctrl.Uref[1][1]-2.0
     
-    A,B = KF_dynamics_jacobians(x, ctrl.Uref[k] + Δu, dt)
-    du_wind = get_wind_correction(x, B) #note: this function is in dynamics.jl
+    u_corrected_pre_wind = ctrl.Uref[k] + Δu
+    clamp!(u_corrected_pre_wind, umin, umax)
     
-    if relinearize
-        # NOTE: this should not be used, leaving it for now
-
-        U_future = []
-        for i=0:ctrl.Nmpc-2
-            if i+k > length(ctrl.Xref)
-                break
-            else
-                # rollout trajectory and update 
-                u_updated = ctrl.Uref[k+i] + results.x[(1:4) .+ (length(x)-1+4)*(i)]
-                Ai, Bi = dynamics_jacobians(x,u_updated,dt)
-                J_attitude = attitude_jacobian(x)
-                A_traj[k+i] = J_attitude' * Ai * J_attitude
-                B_traj[k+i] = J_attitude' * Bi
-                x = rk4(x, u_updated, dt)
-            end
-        end
-    end
+    A,B = KF_dynamics_jacobians(x, u_corrected_pre_wind, dt)
+    du_wind = get_wind_correction(x, B, dt) #note: this function is in dynamics.jl
     
-    u_corrected = ctrl.Uref[k] + Δu #+ du_wind
-#     clamp!(u_corrected, ctrl.Uref[1][1]-2.0, ctrl.Uref[1][1]+15.0)
+    u_corrected = ctrl.Uref[k] + Δu
     
-#     println("u corrected: ", u_corrected)
+    u_corrected += du_wind
+    
+    clamp!(u_corrected, umin, umax)
     
     return u_corrected
     

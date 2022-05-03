@@ -14,6 +14,7 @@ k_m = 1.0 #0.1 # [N*m/rpm]
          [-ℓ*k_T 0 ℓ*k_T 0]
          [k_m -k_m k_m -k_m]]
 
+
 """
 Calculate the continuous time dynamics ẋ = f(x,u), x is a vector of length 6, u is a vector of length 2.
 param - x <13 elem vector>: [pos (world frame),
@@ -80,6 +81,21 @@ function KF_dynamics_model(x,u)
     return ẋ[:,1]
 end
 
+"""
+==============================================================
+    Wind Things
+==============================================================
+"""
+
+struct Wind_Struct
+    wd::Array{Float64,1} # mean on wind angle
+    wm::Array{Float64,1} #mean on wind magnitude
+    wind_dir::MVector{3,Float64} # wind direction
+    wind_hist::Matrix{Float64} #tracks history of wind for plotting
+    wind_type::Bool #keeps track of which version of wind to use(double or single)
+    wind_disturbance::Bool #Should we use wind
+end
+
 function simulate_random_walk_wind_traj!(wind, move=0.1)
     rand_num = Random.randn(1)[1]
     if wind.wind_type
@@ -98,7 +114,7 @@ function simulate_random_walk_wind_traj!(wind, move=0.1)
     end
 end   
 
-function get_wind_correction(x,B)
+function get_wind_correction(x,B,dt)
     # unpack state
     r = x[1:3]
     q = x[4:7]
@@ -109,15 +125,25 @@ function get_wind_correction(x,B)
     Q = rot_mat_from_quat(q)
     F_wind = Q' * wind # body frame
     
-    dv_du = B[8:10,:] # 3x4
+    B_minus_wind = B[begin:13,:] # 13x4
     
-    thrust_correction = dv_du \ -F_wind
+    # assuming wind only affects velocities, solve a least squares
+    #   problem to minimize change in other states while correcting
+    #   for wind disturbance
+    error = zeros(13)
+    error[8:10] = -F_wind*dt
+        
     
-#     println("wind force: ", wind)
-#     println("thrust corr: ", thrust_correction)
+    thrust_correction = B_minus_wind \ error
     
     return thrust_correction
 end
+
+"""
+==============================================================
+    Dynamics Integrators and Jacobians
+==============================================================
+"""
 
 """
 Integrates the dynamics ODE 1 dt forward, x_{k+1} = rk4(x_k,u_k,dt).
