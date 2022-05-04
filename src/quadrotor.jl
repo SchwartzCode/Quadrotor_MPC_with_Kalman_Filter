@@ -35,6 +35,7 @@ function visualize!(vis, model, tf::Real, X)
     fps = Int(round((length(X)-1)/tf))
     anim = MeshCat.Animation(fps)
     n,m = RobotDynamics.dims(model)
+    n = length(X[1])
     for (k,x) in enumerate(X)
         atframe(anim, k) do
             x = X[k]
@@ -160,6 +161,7 @@ function altro_reference_zigzag(N::Int64, dt::Float64, model)
     solve!(solver)
 
     X = states(solver)
+    
     return X
 end   
 function altro_reference_circle(N::Int64, dt::Float64, model)
@@ -452,7 +454,7 @@ function simple_flip_reference(N::Int64, dt::Float64)
 end
 
 
-function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_linearization=false, wind_disturbance=true, kwargs...)
+function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, wind_correction=true, wind_disturbance=true, kwargs...)
 
     n = length(x0)
     m = size(B[1])[2]
@@ -469,8 +471,8 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_line
 
     println("Beginning simulation...")
     
-    if wind.wind_disturbance
-        wind.wind_dir .= ones(3)*1.0
+    if wind_disturbance
+        wind.wind_dir .= ones(3)*1e-2
     end
     
     
@@ -479,14 +481,16 @@ function simulate(quad::Quadrotor, x0, ctrl, A, B; tf=1.5, dt=0.025, online_line
         
         wind.wind_hist[k,:] .= wind.wind_dir
         
-        U[k] = get_control(ctrl, A, B, X_KF[k], times[k], relinearize=online_linearization)
+        U[k] = get_control(ctrl, A, B, X_KF[k], times[k], wind_correction=wind_correction)
         x_pred, Σ_pred = EKF_predict(X_KF[k], U[k], Σ, dt)
-#         println("passing in ", wind)
-        X_true[k+1] = rk4(X_true[k], U[k], dt, wind)
         
+        # simulate dynamics and update state estimate with measurement
+        X_true[k+1] = rk4(X_true[k], U[k], dt, wind)
         X_KF[k+1], Σ = EKF_correct(x_pred, U[k], X_true[k+1], Σ_pred, dt)
+        
         Σ *= 5 # TODO: why is this necessary?
         
+        # randomly adjust wind
         simulate_random_walk_wind_traj!(wind)
     end
     

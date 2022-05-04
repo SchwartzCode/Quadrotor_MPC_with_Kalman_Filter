@@ -14,6 +14,7 @@ k_m = 1.0 #0.1 # [N*m/rpm]
          [-ℓ*k_T 0 ℓ*k_T 0]
          [k_m -k_m k_m -k_m]]
 
+
 """
 Calculate the continuous time dynamics ẋ = f(x,u), x is a vector of length 6, u is a vector of length 2.
 param - x <13 elem vector>: [pos (world frame),
@@ -39,8 +40,8 @@ function dynamics(x,u,wind)
 #     wind = x[14:16] # unused in this func
     
     Q = rot_mat_from_quat(q)
-    F_B = Q' * ([0 0 -mass*g]' + reshape(wind.wind_dir, (3,1))) + [0 0 sum(k_T * u)]'
-    τ_B = τ_mat * u
+    F_B = Q' * ([0 0 -mass*g]') + [0 0 sum(k_T * u)]'
+    τ_B = τ_mat * u + Q'*(reshape(wind.wind_dir, (3,1)))
     
     # see main_script.ipynb for formal dynamics definition
     ẋ = vcat(Q*v_B, 
@@ -67,8 +68,8 @@ function KF_dynamics_model(x,u)
     
     Q = rot_mat_from_quat(q)
     
-    F_B = Q' * ([0 0 -mass*g]' + wind) + [0 0 sum(k_T * u)]'
-    τ_B = τ_mat * u
+    F_B = Q' * ([0 0 -mass*g]') + [0 0 sum(k_T * u)]'
+    τ_B = τ_mat * u + Q'*wind
     
     # see main_script.ipynb for formal dynamics definition
     ẋ = vcat(Q*v_B, 
@@ -78,6 +79,20 @@ function KF_dynamics_model(x,u)
              zeros(3)) # FIXME: estimate of wind dynamics goes here
     
     return ẋ[:,1]
+end
+
+"""
+==============================================================
+    Wind Things
+==============================================================
+"""
+
+struct WindStruct
+    wd::Array{Float64,1} # mean on wind angle
+    wm::Array{Float64,1} #mean on wind magnitude
+    wind_dir::MVector{3,Float64} # wind direction
+    wind_hist::Matrix{Float64} #tracks history of wind for plotting
+    wind_type::Bool #keeps track of which version of wind to use(double or single)
 end
 
 function simulate_random_walk_wind_traj!(wind, move=0.1)
@@ -98,7 +113,7 @@ function simulate_random_walk_wind_traj!(wind, move=0.1)
     end
 end   
 
-function get_wind_correction(x,B)
+function get_wind_correction(x,B,dt)
     # unpack state
     r = x[1:3]
     q = x[4:7]
@@ -109,15 +124,27 @@ function get_wind_correction(x,B)
     Q = rot_mat_from_quat(q)
     F_wind = Q' * wind # body frame
     
-    dv_du = B[8:10,:] # 3x4
+#     τ_mat * u = - Q'*wind
     
-    thrust_correction = dv_du \ -F_wind
+    B_minus_wind = B[begin:13,:] # 13x4
     
-#     println("wind force: ", wind)
-#     println("thrust corr: ", thrust_correction)
+    # assuming wind only affects velocities, solve a least squares
+    #   problem to minimize change in other states while correcting
+    #   for wind disturbance
+#     error = zeros(13)
+#     error[11:13] = -F_wind*dt
+#     thrust_correction = B_minus_wind \ error
+        
+    thrust_correction = τ_mat \ - Q'*wind
     
     return thrust_correction
 end
+
+"""
+==============================================================
+    Dynamics Integrators and Jacobians
+==============================================================
+"""
 
 """
 Integrates the dynamics ODE 1 dt forward, x_{k+1} = rk4(x_k,u_k,dt).
@@ -143,6 +170,15 @@ function dynamics_jacobians(x,u,dt,wind)
     A = FD.jacobian(_x -> rk4(_x,u,dt,wind),x)
     B = FD.jacobian(_u -> rk4(x,_u,dt,wind),u)
     return A,B
+end
+    
+function no_wind_dynamics_jacobians(x,u,dt,wind)
+    x_wind = zeros(16)
+    x_wind[1:13] .= x
+    # returns the discrete time dynamics jacobians
+    A = FD.jacobian(_x -> rk4(_x,u,dt,wind),x_wind)
+    B = FD.jacobian(_u -> rk4(x_wind,_u,dt,wind),u)
+    return A[1:13,1:13], B[1:13,1:4]
 end
 
 
