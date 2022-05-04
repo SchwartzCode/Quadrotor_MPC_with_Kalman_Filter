@@ -1,15 +1,17 @@
-# Taken from homework3-Q1
+# Taken from hRobotzoo quadrotor
+#https://github.com/RoboticExplorationLab/RobotZoo.jl/blob/master/src/quadrotor.jl
 using Random
 """
 Quadrotor Dynamics Parameters
 """
-mass = 1.0 # [kg]
+mass = 0.5 # [kg]
 g = 9.81   # gravitational acceleration [m/s^2]
-ℓ = 0.3 # quadrotor arm length [m]
-J = diagm([0.004, 0.004, 0.008]) * mass * ℓ^2 # quadrotor moments of inertia about (x,y,z)
+ℓ = 0.1750 # quadrotor arm length [m]
+# J = diagm([0.004, 0.004, 0.008]) * mass * ℓ^2 # quadrotor moments of inertia about (x,y,z)
+J=Diagonal(@SVector [0.0023, 0.0023, 0.004])
 
 k_T = 1.0 #0.1 # [N/rpm]
-k_m = 1.0 #0.1 # [N*m/rpm]
+k_m = 0.0245 #0.1 # [N*m/rpm]
 τ_mat = [[0 ℓ*k_T 0 -ℓ*k_T]
          [-ℓ*k_T 0 ℓ*k_T 0]
          [k_m -k_m k_m -k_m]]
