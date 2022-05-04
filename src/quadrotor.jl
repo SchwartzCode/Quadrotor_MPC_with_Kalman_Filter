@@ -35,6 +35,19 @@ function visualize!(vis, model, tf::Real, X)
     fps = Int(round((length(X)-1)/tf))
     anim = MeshCat.Animation(fps)
     n,m = RobotDynamics.dims(model)
+    for (k,x) in enumerate(X)
+        atframe(anim, k) do
+            x = X[k]
+            state = x[1:13]
+            visualize!(vis, model, SVector{n}(state)) 
+        end
+    end
+    setanimation!(vis, anim)
+end
+function visualize_no_wind!(vis, model, tf::Real, X)
+    fps = Int(round((length(X)-1)/tf))
+    anim = MeshCat.Animation(fps)
+    n,m = RobotDynamics.dims(model)
 
     for (k,x) in enumerate(X)
         atframe(anim, k) do
@@ -84,8 +97,10 @@ function altro_reference_line(N::Int64, dt::Float64, model)
     solve!(altro)
     # Extract the solution
     X = states(altro)
-    return X
+    wind_ests = Array(zeros(3))
+    return [SVector{16}( vcat(X[i], wind_ests)) for i in 1:N]
 end
+
 function altro_reference_zigzag(N::Int64, dt::Float64, model)
     
     n,m = RobotDynamics.dims(model)
@@ -160,29 +175,30 @@ function altro_reference_zigzag(N::Int64, dt::Float64, model)
     solve!(solver)
 
     X = states(solver)
-    return X
+    wind_ests = Array(zeros(3))
+    return [SVector{16}( vcat(X[i], wind_ests)) for i in 1:N]
 end
 
 function altro_reference_circle(N::Int64, dt::Float64, model)
+    n,m = RobotDynamics.dims(model)
+
     N_pre_flip = Int(floor(N / 4))
     N_flip = Int(floor(N /3/ 4))
     N_post_flip = Int(ceil(N / 4))
     N_post_flip += N - (N_pre_flip + N_flip + N_post_flip)
-#     N_pre_flip+2*N_flip+ Int(ceil(N_post_flip / 2))
     times =[N_pre_flip,N_pre_flip+N_flip, N_pre_flip+2*N_flip, N_pre_flip+3*N_flip,N_pre_flip+4*N_flip,N-25,N]
     N = times[end]
     println(times)
     # Define initial and final conditions
-    #fly to position to start flip
-#     Q = Diagonal(RobotDynamics.fill_state(model, 1e-2, 1e-2, 1e-2, 1e-2))
     
+    #These took forever to tune. Wouldnt recommend changing
     Q = Diagonal(RobotDynamics.fill_state(model, 20., 5., 1., 1.))
     R = Diagonal(@SVector fill(1e-2, 4))
-#     R = 1.0*Diagonal(@SVector ones(m))
+    
+    #handle all the quaternion and velocities
     quad_base =[1, 0, 0, 0]
     rot_mat_base = rot_mat_from_quat(quad_base)
     vels_base = rot_mat_base * [0, 2.0/(N_pre_flip*dt), 0]
-    
     quad_66 = ρ([tan.(pi/2/2), 0, 0])
     rot_mat_66 = rot_mat_from_quat(quad_66)
     vels_66 = rot_mat_66 * [0, 2.0/(N_flip*dt), 0]
@@ -199,13 +215,14 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
     rot_mat_f = rot_mat_from_quat(quad_f)
     vels_f = rot_mat_f * [0,  0, 0]
     zero=zeros(3)
+    
                   #x  y    z  w  x  y  z  vx   vy                vz ωx ωy ωz        
     x0 = @SVector [0, -3, 1, quad_base[1],quad_base[2],quad_base[3],quad_base[4],
                     vels_base[1],vels_base[2], vels_base[3], 0, 0, 0]  
-#     xf = @SVector [0, 3, 2, quad_f[1],quad_f[2],quad_f[3],quad_f[4], vels_f[1],vels_f[2], vels_f[3], 0, 0, 0] 
     xf = @SVector [0, 3.0, 1, quad_f[1],quad_f[2],quad_f[3],quad_f[4],
                 vels_f[1],vels_f[2], vels_f[3],0, 0, 0]
     
+    #Setup waypoints
     wpts = [SA[0, 1,  1, quad_base[1],quad_base[2],quad_base[3],quad_base[4],
                     vels_base[1],vels_base[2], vels_base[3], 0, 0, 0],
             SA[0, 3, 4, quad_66[1],quad_66[2],quad_66[3],quad_66[4],
@@ -220,10 +237,9 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
                 vels_bottom[1],vels_bottom[2], vels_bottom[3], 0, 0, 0],
             xf]
 
-    # Set up
+    # Set up costs
     costs = map(1:length(wpts)) do i
         xg = wpts[i]
-        println(i)
         TrajectoryOptimization.QuatLQRCost(Q,R,xg)
     end 
 
@@ -257,7 +273,8 @@ function altro_reference_circle(N::Int64, dt::Float64, model)
     solve!(solver)
 
     X = states(solver)
-    return X
+    wind_ests = Array(zeros(3))
+    return [SVector{16}( vcat(X[i], wind_ests)) for i in 1:N]
 end
     
 
@@ -370,8 +387,8 @@ function flip_reference(N::Int64, dt::Float64)
         vels[:,i] = Q * vels[:,i]
     end
     
-    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'] 
-    return [SVector{13}(x) for x in eachcol(xref)]
+    xref = [x_ref'; y_ref'; z_ref'; quat_ref'; vels; ωx_ref'; ωy_ref'; ωz_ref'; wind_ests'] 
+    return [SVector{16}(x) for x in eachcol(xref)]
 end
 
 
