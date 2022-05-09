@@ -11,8 +11,6 @@
 readme
 
 Things to do:
-- use altro to generate dynamically-feasible trajectory
-- debug wind-compensation in MPC get_control() function
 - add noise to measurements and dynamics
 - make state measurements just pose
 
